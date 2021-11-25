@@ -1,101 +1,65 @@
 #include <stdint.h>
-#include <malloc.h>
 #include <utility>
+#include <type_traits>
 #include <functional>
+#include <stdexcept>
 
-template<class T>
-T* cxxmalloc(size_t siz) {
-	T* res = (T*)malloc(siz * sizeof(T));
-	if (res == nullptr)
-		throw std::bad_alloc();
-	if constexpr (std::is_default_constructible<T>::value) new(res) T[siz]();
-	return res;
-}
-template<class T>
-auto cxxmalloc(size_t siz, const T& init) -> decltype(std::is_copy_assignable<T>::value) {
-	T* res = (T*)malloc(siz * sizeof(T));
-	if (res == nullptr)
-		throw std::bad_alloc();
-	for (size_t i = 0; i < siz; i++)
-		res[i] = init;
-	return res;
-}
-template<class T>
-void cxxfree(T* val, size_t siz) {
-	if constexpr (std::is_destructible<T>::value)
-		for (size_t i = 0; i < siz; i++)
-			val[i].~T();
-	free(val);
-}
-template<class T>
-auto cxxrealloc(T* val, size_t old_size, size_t new_size) {
-	if (new_size == old_size)
-		return val;
-	if (old_size < new_size) {
-		T* new_val = (T*)realloc(val, new_size);
-		if constexpr (std::is_default_constructible<T>::value)
-			for (size_t i = old_size; i < new_size; i++)
-				new (&new_val[i])T();
-
-		return new_val;
-	}
-	else {
-		if constexpr (std::is_destructible<T>::value) {
-			for (size_t i = new_size; i < old_size; i++)
-				val[i].~T();
-		}
-		return (T*)realloc(val, new_size);
-	}
-}
-template<class T>
-auto cxxrealloc(T* val, size_t old_size, size_t new_size, const T& init) -> decltype(std::is_copy_assignable<T>::value) {
-	if (new_size == old_size)
-		return val;
-	if (old_size < new_size) {
-		T* new_val = (T*)realloc(val, new_size);
-		for (size_t i = old_size; i < new_size; i++)
-			new_val[i] = init;
-		return new_val;
-	}
-	else {
-		if constexpr (std::is_destructible<T>::value)
-			for (size_t i = new_size; i < old_size; i++)
-				val[i].~T();
-		return (T*)realloc(val, new_size);
-	}
-}
 
 template<class T>
 class list_array {
 	template<class T>
 	class dynamic_arr;
 	template<class T>
-	class arr_block;
+	class arr_block; 
+	template<class T>
+	static T* cxxresize(T* val, size_t old_size, size_t new_size) {
+		if (new_size == old_size)
+			return val;
+		T* new_val = new T[new_size];
+		if (old_size < new_size) {
+			if constexpr (std::is_move_assignable<T>::value)
+				for (size_t i = 0; i < old_size; i++)
+					new_val[i] = std::move(val[i]);
+			else
+				for (size_t i = 0; i < old_size; i++)
+					new_val[i] = val[i];
+		}
+		else {
+			if constexpr (std::is_move_assignable<T>::value)
+				for (size_t i = 0; i < new_size; i++)
+					new_val[i] = std::move(val[i]);
+			else
+				for (size_t i = 0; i < new_size; i++)
+					new_val[i] = val[i];
+		}
+		delete[] val;
+		return new_val;
+	}
 public:
 	template<class T>
-	class const_arr_block_interator;
+	class const_interator;
 	using value_type = T;
 	template<class T>
-	class arr_block_interator {
+	class interator {
 		friend class dynamic_arr<T>;
-		friend class const_arr_block_interator<T>;
+		friend class const_interator<T>;
 		arr_block<T>* block;
 		size_t pos;
 
 	public:
-		arr_block_interator& operator=(const arr_block_interator& seter) {
+		interator& operator=(const interator& seter) {
 			block = seter.block;
 			pos = seter.pos;
 			return *this;
 		}
-		arr_block_interator(const arr_block_interator& copy) {
+		interator(const interator& copy) {
 			*this = copy;
 		}
-		arr_block_interator(arr_block<T>* block_pos, size_t set_pos) {
+		interator(arr_block<T>* block_pos, size_t set_pos) {
 			block = block_pos;
 			pos = set_pos;
 		}
-		arr_block_interator& operator++() {
+		interator& operator++() {
 			if (block) {
 				if (block->_size <= ++pos) {
 					block = block->next_;
@@ -104,12 +68,12 @@ public:
 			}
 			return *this;
 		}
-		arr_block_interator operator++(int) const {
-			arr_block_interator tmp = *this;
-			++const_cast<arr_block_interator&>(*this);
+		interator operator++(int) const {
+			interator tmp = *this;
+			++const_cast<interator&>(*this);
 			return tmp;
 		}
-		arr_block_interator& operator--() {
+		interator& operator--() {
 			if (block) {
 				if (0 == --pos) {
 					block = block->_prev;
@@ -118,20 +82,20 @@ public:
 			}
 			return *this;
 		}
-		arr_block_interator operator--(int) const {
-			arr_block_interator tmp = *this;
-			--const_cast<arr_block_interator&>(*this);
+		interator operator--(int) const {
+			interator tmp = *this;
+			--const_cast<interator&>(*this);
 			return tmp;
 		}
-		bool operator==(const arr_block_interator& comparer) const {
+		bool operator==(const interator& comparer) const {
 			return block == comparer.block && pos == comparer.pos;
 		}
-		bool operator!=(const arr_block_interator& comparer) const {
+		bool operator!=(const interator& comparer) const {
 			return !(*this == comparer) && block ? pos < block->_size : 0;
 		}
 		T& operator*() { return block->arr_contain[pos]; }
 		const T& operator*() const { return block->arr_contain[pos]; }
-		arr_block_interator& operator->() { return *this; }
+		interator& operator->() { return *this; }
 		void fast_load(T* arr, size_t arr_size) {
 			size_t j = pos;
 			arr_block<T>* block_tmp = block;
@@ -150,32 +114,32 @@ public:
 		}
 	};
 	template<class T>
-	class const_arr_block_interator {
+	class const_interator {
 		friend class dynamic_arr<T>;
 		arr_block<T>* block;
 		size_t pos;
 	public:
-		const_arr_block_interator& operator=(const const_arr_block_interator& seter) {
+		const_interator& operator=(const const_interator& seter) {
 			block = seter.block;
 			pos = seter.pos;
 			return *this;
 		}
-		const_arr_block_interator(const const_arr_block_interator& copy) {
+		const_interator(const const_interator& copy) {
 			*this = copy;
 		}
-		const_arr_block_interator& operator=(const arr_block_interator<T>& seter) {
+		const_interator& operator=(const interator<T>& seter) {
 			block = seter.block;
 			pos = seter.pos;
 			return *this;
 		}
-		const_arr_block_interator(const arr_block_interator<T>& copy) {
+		const_interator(const interator<T>& copy) {
 			*this = copy;
 		}
-		const_arr_block_interator(arr_block<T>* block_pos, size_t set_pos) {
+		const_interator(arr_block<T>* block_pos, size_t set_pos) {
 			block = block_pos;
 			pos = set_pos;
 		}
-		const_arr_block_interator& operator++() {
+		const_interator& operator++() {
 			if (block) {
 				if (block->_size <= ++pos) {
 					block = block->next_;
@@ -184,12 +148,12 @@ public:
 			}
 			return *this;
 		}
-		const_arr_block_interator operator++(int) {
-			const_arr_block_interator tmp = *this;
+		const_interator operator++(int) {
+			const_interator tmp = *this;
 			++(*this);
 			return tmp;
 		}
-		const_arr_block_interator& operator--() {
+		const_interator& operator--() {
 			if (block) {
 				if (0 == --pos) {
 					block = block->_prev;
@@ -198,19 +162,19 @@ public:
 			}
 			return *this;
 		}
-		const_arr_block_interator operator--(int) {
-			const_arr_block_interator tmp = *this;
+		const_interator operator--(int) {
+			const_interator tmp = *this;
 			--(*this);
 			return tmp;
 		}
-		bool operator==(const const_arr_block_interator& comparer) const {
+		bool operator==(const const_interator& comparer) const {
 			return block == comparer.block && pos == comparer.pos;
 		}
-		bool operator!=(const const_arr_block_interator& comparer) const {
+		bool operator!=(const const_interator& comparer) const {
 			return !(*this == comparer) && (block ? pos < block->_size : 0);
 		}
 		const T& operator*() { return block->arr_contain[pos]; }
-		const_arr_block_interator operator->() { return *this; }
+		const_interator operator->() { return *this; }
 	};
 private:
 	//block item abstraction
@@ -239,7 +203,7 @@ private:
 				_prev->next_ = this;
 			if (next_ = next)
 				next_->_prev = this;
-			arr_contain = cxxmalloc<T>(len);
+			arr_contain = new T[len];
 			_size = len;
 		}
 		~arr_block() {
@@ -252,7 +216,7 @@ private:
 				delete next_;
 			}
 			if (arr_contain)
-				cxxfree<T>(arr_contain, _size);
+				delete[] arr_contain;
 		}
 		T& operator[](size_t pos) {
 			return (pos < _size) ? arr_contain[pos] : (*next_)[pos - _size];
@@ -262,7 +226,7 @@ private:
 		}
 		arr_block& operator=(const arr_block& copy) {
 			_size = copy._size;
-			arr_contain = cxxmalloc<T>(_size);
+			arr_contain = new T[_size];
 			for (size_t i = 0; i < _size; i++)
 				arr_contain[i] = copy.arr_contain[i];
 		}
@@ -286,84 +250,84 @@ private:
 		const T& index_front(size_t pos) const {
 			return (pos < _size) ? arr_contain[pos] : (*next_)[pos - _size];
 		}
-		arr_block_interator<T> get_interator(size_t pos) {
-			if (!this) return arr_block_interator<T>(nullptr, pos);
+		interator<T> get_interator(size_t pos) {
+			if (!this) return interator<T>(nullptr, pos);
 			return
 				this ?
 				((pos < _size) ?
-					arr_block_interator<T>(this, pos) :
+					interator<T>(this, pos) :
 					(*next_).get_interator(pos - _size)
 					) :
-				arr_block_interator<T>(nullptr, 0);
+				interator<T>(nullptr, 0);
 		}
-		arr_block_interator<T> get_interator_back(size_t pos) {
-			if (!this) return arr_block_interator<T>(nullptr, 0);
+		interator<T> get_interator_back(size_t pos) {
+			if (!this) return interator<T>(nullptr, 0);
 			return
 				this ?
 				((pos < _size) ?
-					arr_block_interator<T>(this, _size - pos - 1) :
+					interator<T>(this, _size - pos - 1) :
 					(*_prev).get_interator_back(pos - _size)
 					) :
-				arr_block_interator<T>(nullptr, 0);
+				interator<T>(nullptr, 0);
 		}
-		const const_arr_block_interator<T> get_interator(size_t pos) const {
-			if (!this) return const_arr_block_interator<T>(nullptr, pos);
+		const const_interator<T> get_interator(size_t pos) const {
+			if (!this) return const_interator<T>(nullptr, pos);
 			return
 				this ?
 				((pos < _size) ?
-					const_arr_block_interator<T>(this, pos) :
+					const_interator<T>(this, pos) :
 					(*next_).get_interator(pos - _size)
 					) :
-				const_arr_block_interator<T>(nullptr, 0);
+				const_interator<T>(nullptr, 0);
 		}
-		const const_arr_block_interator<T> get_interator_back(size_t pos) const {
-			if (!this) return const_arr_block_interator<T>(nullptr, 0);
+		const const_interator<T> get_interator_back(size_t pos) const {
+			if (!this) return const_interator<T>(nullptr, 0);
 			return
 				this ?
 				((pos < _size) ?
-					const_arr_block_interator<T>(this, _size - pos - 1) :
+					const_interator<T>(this, _size - pos - 1) :
 					(*_prev).get_interator_back(pos - _size)
 					) :
-				const_arr_block_interator<T>(nullptr, 0);
+				const_interator<T>(nullptr, 0);
 		}
-		arr_block_interator<T> begin() {
+		interator<T> begin() {
 			return
 				this ? (
 					_prev ?
 					_prev->begin() :
-					arr_block_interator<T>(this, 0)
+					interator<T>(this, 0)
 					) :
-				arr_block_interator<T>(nullptr, 0)
+				interator<T>(nullptr, 0)
 				;
 		}
-		arr_block_interator<T> end() {
+		interator<T> end() {
 			return
 				this ? (
 					next_ ?
 					next_->end() :
-					arr_block_interator<T>(this, _size)
+					interator<T>(this, _size)
 					) :
-				arr_block_interator<T>(nullptr, 0)
+				interator<T>(nullptr, 0)
 				;
 		}
-		const_arr_block_interator<T> begin() const {
+		const_interator<T> begin() const {
 			return
 				this ? (
 					_prev ?
 					_prev->begin() :
-					const_arr_block_interator<T>(this, 0)
+					const_interator<T>(this, 0)
 					) :
-				const_arr_block_interator<T>(nullptr, 0)
+				const_interator<T>(nullptr, 0)
 				;
 		}
-		const_arr_block_interator<T> end() const {
+		const_interator<T> end() const {
 			return
 				this ? (
 					next_ ?
 					next_->end() :
-					arr_block_interator<T>(this, _size)
+					interator<T>(this, _size)
 					) :
-				arr_block_interator<T>(nullptr, 0)
+				interator<T>(nullptr, 0)
 				;
 		}
 		inline size_t size() const {
@@ -375,7 +339,7 @@ private:
 				return;
 			}
 			T* tmp = arr_contain;
-			arr_contain = cxxrealloc<T>(arr_contain, _size, siz);
+			arr_contain = cxxresize<T>(arr_contain, _size, siz);
 			if (arr_contain == nullptr)
 			{
 				arr_contain = tmp;
@@ -388,7 +352,7 @@ private:
 				good_bye_world();
 				return;
 			}
-			T* narr = cxxmalloc<T>(siz);
+			T* narr = new T[siz];
 			if (narr == nullptr)
 				throw std::bad_alloc();
 
@@ -401,7 +365,7 @@ private:
 				for (size_t i = 0; i < siz && i < _size; i++)
 					narr[dif + i] = arr_contain[i];
 			}
-			cxxfree<T>(arr_contain, _size);
+			delete[] arr_contain;
 			arr_contain = narr;
 			_size = siz;
 		}
@@ -590,14 +554,14 @@ private:
 		const T& index_back(size_t pos) const {
 			return arr_end->index_back(_size - pos - 1);
 		}
-		arr_block_interator<T> get_interator(size_t pos) {
+		interator<T> get_interator(size_t pos) {
 			return
 				(pos < (_size >> 1)) ?
 				arr->get_interator(pos) :
 				arr_end->get_interator_back(_size - pos - 1)
 				;
 		}
-		const_arr_block_interator<T> get_interator(size_t pos) const {
+		const_interator<T> get_interator(size_t pos) const {
 			return
 				(pos < (_size >> 1)) ?
 				arr->get_interator(pos) :
@@ -726,7 +690,7 @@ private:
 				operator[](0) = item;
 				return;
 			}
-			arr_block_interator<T> inter = get_interator(pos);
+			interator<T> inter = get_interator(pos);
 			arr_block<T>& this_block = *inter.block;
 			if (inter.pos == 0) {
 				this_block.resize_begin(this_block._size + 1);
@@ -748,7 +712,7 @@ private:
 				operator[](0) = std::move(item);
 				return;
 			}
-			arr_block_interator<T> inter = get_interator(pos);
+			interator<T> inter = get_interator(pos);
 			arr_block<T>& this_block = *inter.block;
 			if (inter.pos == 0) {
 				this_block.resize_begin(this_block._size + 1);
@@ -767,7 +731,7 @@ private:
 		void remove_item(size_t pos) {
 			if (!_size)
 				return;
-			arr_block_interator<T> inter = get_interator(pos);
+			interator<T> inter = get_interator(pos);
 			arr_block<T>& this_block = *inter.block;
 			if (inter.pos == 0) {
 				if (this_block._size == 1) {
@@ -803,7 +767,7 @@ public:
 		resize(vals.size());
 		size_t i = 0;
 		for (const T& it : vals)
-			operator[](i) = it;
+			operator[](i++) = it;
 	}
 	list_array(size_t size) {
 		resize(size);
@@ -974,7 +938,7 @@ public:
 
 	//index optimization
 	void commit() {
-		T* tmp = cxxmalloc<T>(_size);
+		T* tmp = new T[_size];
 		begin().fast_load(tmp, _size);
 		arr.safe_destruct();
 		arr.arr = arr.arr_end = new arr_block<T>();
@@ -1067,16 +1031,29 @@ public:
 				++i;
 		return i;
 	}
-	void foreach(const std::function<bool(T&)>& interate_function) {
-		for (T& it : *this)
-			if (interate_function(it))
-				break;
+	template<class _Fn>
+	void foreach(_Fn interate_function) {
+		if constexpr (std::is_same<decltype(std::function{ interate_function })::result_type, bool>::value) {
+			for (auto& it : *this)
+				if (interate_function(it))
+					break;
+		}
+		else
+			for (auto& it : *this)
+				interate_function(it);
 	}
-	void foreach(const std::function<bool(const T&)>& interate_function) const {
-		for (const T& it : *this)
-			if (interate_function(it))
-				break;
+	template<class _Fn>
+	void foreach(_Fn interate_function) const {
+		if constexpr (std::is_same<decltype(std::function{ interate_function })::result_type, bool>::value) {
+			for (auto& it : *this)
+				if (interate_function(it))
+					break;
+		}
+		else
+			for (auto& it : *this)
+				interate_function(it);
 	}
+
 	void remove_if(const std::function<bool(const T&)>& check_function) {
 		//O(n^2) TO OPTIMIZE
 		for (size_t i = 0; i < _size;) {
@@ -1111,19 +1088,19 @@ public:
 		return larr;
 	}
 
-	arr_block_interator<T> get_interator(size_t pos) {
+	interator<T> get_interator(size_t pos) {
 		return arr.get_interator(reserved_begin + pos);
 	}
-	arr_block_interator<T> begin() {
+	interator<T> begin() {
 		return arr.get_interator(reserved_begin);
 	}
-	arr_block_interator<T> end() {
+	interator<T> end() {
 		return arr.get_interator(reserved_begin + _size);
 	}
-	const_arr_block_interator<T> begin() const {
+	const_interator<T> begin() const {
 		return arr.get_interator(reserved_begin);
 	}
-	const_arr_block_interator<T> end() const {
+	const_interator<T> end() const {
 		return arr.get_interator(reserved_begin + _size);
 	}
 	inline T& operator[](size_t pos) {
