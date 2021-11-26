@@ -6,32 +6,50 @@ void speed_test() {
 	for (size_t i = 0; i < 1; i++) {
 		std::chrono::steady_clock::time_point curr;
 
-		curr = std::chrono::high_resolution_clock::now();
 		list_array<uint32_t> test;
+		std::cout << "Push only time: ";
+		curr = std::chrono::high_resolution_clock::now();
 		for (uint32_t i = 0; i < 1000000000; i++)test.push_front(i);
-		
 		std::cout << std::chrono::high_resolution_clock::now() - curr << std::endl;
+
+
+
+		std::cout << "Commit to one block time: ";
 		curr = std::chrono::high_resolution_clock::now();
 		test.commit();
 		std::cout << std::chrono::high_resolution_clock::now() - curr << std::endl;
-		curr = std::chrono::high_resolution_clock::now();
 
+		std::cout << "Default index 1000000000 elems time: ";
+		curr = std::chrono::high_resolution_clock::now();
 		for (uint32_t i = 0; i < 1000000000; i++) {
 			if (test[i] != i)
 				std::cout << "Err! [" << i << "] " << test[i] << std::endl;
 		}
 		std::cout << std::chrono::high_resolution_clock::now() - curr << std::endl;
+
+
+		std::cout << "Foreach 1000000000 elems time: ";
 		curr = std::chrono::high_resolution_clock::now();
 		uint64_t a = 0;
 		test.foreach([&a](uint32_t& it) { a += it; });
+		std::cout << std::chrono::high_resolution_clock::now() - curr;
+
+		std::cout << ", elems sum: " << a << std::endl;
+
+		std::cout << "Remove if (half array): ";
+		curr = std::chrono::high_resolution_clock::now();
+		test.remove_if([](auto& it) { return (bool)(it & 1); });
 		std::cout << std::chrono::high_resolution_clock::now() - curr << std::endl;
-		std::cout << a << std::endl;
+
+
+		std::cout << "After remove if foreach: ";
+		curr = std::chrono::high_resolution_clock::now();
+		a = 0;
+		test.foreach([&a](uint32_t& it) { a += it; });
+		std::cout << std::chrono::high_resolution_clock::now() - curr;
+		std::cout << ", elems sum: " << a << std::endl;
 	}
 }
-
-
-
-
 inline void index() {
 	list_array<int> test(60);
 	for (size_t i = 0; i < 60; i++)
