@@ -45,7 +45,6 @@ public:
 		friend class const_interator<T>;
 		arr_block<T>* block;
 		size_t pos;
-
 	public:
 		interator& operator=(const interator& seter) {
 			block = seter.block;
@@ -111,6 +110,11 @@ public:
 				block_size = block_tmp->_size;
 				block_arr = block_tmp->arr_contain;
 			}
+		}
+		bool nextBlock() {
+			block = block ? block->next_ : block;
+			pos = 0;
+			return block && (block ? block->next_ : block);
 		}
 	};
 	template<class T>
@@ -499,6 +503,9 @@ private:
 			swap_block_with_blocks(this_block, first_block, second_block);
 			_size += item_size;
 		}
+
+
+		
 	public:
 		void safe_destruct() {
 			arr_block<T>* blocks = arr;
@@ -612,7 +619,7 @@ private:
 			}
 			else {
 				if (arr)
-					if (arr->_size + new_size <= _size / 2) {
+					if (arr->_size + new_size <= _size >> 1) {
 						arr->resize_begin(new_size - tsize + arr_end->_size);
 						goto end;
 					}
@@ -651,7 +658,7 @@ private:
 			}
 			else {
 				if (arr_end)
-					if (arr_end->_size + new_size <= _size / 2) {
+					if (arr_end->_size + new_size <= _size >> 1) {
 						arr_end->resize_front(new_size - tsize + arr_end->_size);
 						goto end;
 					}
@@ -751,6 +758,73 @@ private:
 			else
 				remove_item_split(inter.pos, this_block);
 			_size--;
+		}
+
+		template<class _Fn>
+		size_t _remove_if(arr_block<T>* block, _Fn func, size_t start, size_t end) {
+			// value >> 3  ==  value / 8
+			size_t size = block->_size;
+			size_t rem_filt_siz =
+				size > end ?
+					size >> 3 + (size >> 3 ? 0 : 1) :
+					end >> 3 + (end >> 3 ? 0 : 1);
+			uint8_t* remove_filter = new uint8_t[rem_filt_siz](0);
+			T* arr_inter = block->arr_contain;
+			size_t new_size = size;
+
+			for (size_t i = 0; i < end; i++) {
+				if (func(arr_inter[i])) {
+					remove_filter[i >> 3] |= 1 << (i & 7);
+					new_size--;
+				}
+			}
+			if (size != new_size) {
+				if (new_size == 0 && size == end) {
+					if (arr == block) 
+						arr = block->next_;
+					if (arr_end == block)
+						arr_end = block->_prev;
+					block->good_bye_world();
+				}
+				else {
+					new_size += size - end;
+					T* new_arr = new T[new_size];
+					size_t j = 0;
+					for (size_t i = 0; j < new_size && i < end; i++) 
+						if (!(remove_filter[i >> 3] & (1 << (i & 7)))) 
+							new_arr[j++] = arr_inter[i];
+					delete[] block->arr_contain;
+					block->arr_contain = new_arr;
+					block->_size = new_size;
+				}
+			}
+			delete[] remove_filter;
+			return size - new_size;
+		}
+		template<class _Fn>
+		size_t remove_if(_Fn func,size_t start,size_t end) {
+			if (!_size)
+				return 0;
+			interator<T> interate = get_interator(start);
+			interator<T> _end = get_interator(end);
+			size_t removed = 0;
+			if (interate.block == _end.block)
+				return _remove_if(interate.block, func, interate.pos, _end.pos);
+
+			removed += _remove_if(interate.block, func, interate.pos, interate.block->_size);
+			for (;;) {
+				if (!interate.nextBlock())
+					break;
+				removed += _remove_if(interate.block, func, 0, interate.block->_size);
+			}
+
+			if(_end.block)
+				removed += _remove_if(_end.block, func, 0, _end.pos);
+			else if (interate.block)
+				removed += _remove_if(interate.block, func, 0, interate.block->_size);
+
+			_size -= removed;
+			return removed;
 		}
 	};
 	dynamic_arr<T> arr;
@@ -1018,13 +1092,16 @@ public:
 				return true;
 		return false;
 	}
-	bool contains_one(const std::function<bool(const T&)>& check_functon) const {
+
+	template<class _Fn>
+	bool contains_one(_Fn check_functon) const {
 		for (const T& it : *this)
 			if (compare_functon(it))
 				return true;
 		return false;
 	}
-	size_t contains_multiply(const std::function<bool(const T&)>& check_functon) const {
+	template<class _Fn>
+	size_t contains_multiply(_Fn check_functon) const {
 		size_t i = 0;
 		for (const T& it : *this)
 			if (compare_functon(it))
@@ -1033,7 +1110,8 @@ public:
 	}
 	template<class _Fn>
 	void foreach(_Fn interate_function) {
-		if constexpr (std::is_same<decltype(std::function{ interate_function })::result_type, bool>::value) {
+		using res_t = decltype(std::function{ interate_function })::result_type;
+		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
 			for (auto& it : *this)
 				if (interate_function(it))
 					break;
@@ -1044,7 +1122,8 @@ public:
 	}
 	template<class _Fn>
 	void foreach(_Fn interate_function) const {
-		if constexpr (std::is_same<decltype(std::function{ interate_function })::result_type, bool>::value) {
+		using res_t = decltype(std::function{ interate_function })::result_type;
+		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
 			for (auto& it : *this)
 				if (interate_function(it))
 					break;
@@ -1053,16 +1132,15 @@ public:
 			for (auto& it : *this)
 				interate_function(it);
 	}
-
-	void remove_if(const std::function<bool(const T&)>& check_function) {
-		//O(n^2) TO OPTIMIZE
-		for (size_t i = 0; i < _size;) {
-			if (check_function(operator[](i))) {
-				remove(i);
-				continue;
-			}
-			++i;
-		}
+	template<class _Fn>
+	void remove_if(_Fn check_function) {
+		_size -= arr.remove_if(check_function, reserved_begin, reserved_begin + _size);
+	}
+	template<class _Fn>
+	void remove_if(_Fn check_function, size_t start, size_t end) {
+		if (start > end)
+			std::swap(start, end);
+		_size -= arr.remove_if(check_function, reserved_begin + start, reserved_begin + end);
 	}
 
 	list_array& flip_self() {
