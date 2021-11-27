@@ -3,6 +3,7 @@
 #include <type_traits>
 #include <functional>
 #include <stdexcept>
+#include <iterator>
 
 
 template<class T>
@@ -36,15 +37,20 @@ class list_array {
 		return new_val;
 	}
 public:
+	using value_type = T;
+	using reference = T&;
+	using const_reference = const T&;
+	using size_type = size_t;
+	using difference_type = ptrdiff_t;
+
 	template<class T>
 	class reverse_iterator;
 	template<class T>
 	class const_iterator;
 	template<class T>
 	class const_reverse_iterator;
-	using value_type = T;
 	template<class T>
-	class iterator {
+	class iterator : std::iterator<std::forward_iterator_tag,T> {
 		friend class dynamic_arr<T>;
 		friend class const_iterator<T>;
 		friend class reverse_iterator<T>;
@@ -125,7 +131,7 @@ public:
 		}
 	};
 	template<class T>
-	class const_iterator {
+	class const_iterator : std::iterator<std::forward_iterator_tag, T> {
 		friend class dynamic_arr<T>;
 		friend class const_reverse_iterator<T>;
 		arr_block<T>* block;
@@ -190,7 +196,7 @@ public:
 		const_iterator operator->() { return *this; }
 	};
 	template<class T>
-	class reverse_iterator {
+	class reverse_iterator : std::iterator<std::forward_iterator_tag, T> {
 		friend class dynamic_arr<T>;
 		friend class const_reverse_iterator<T>;
 		arr_block<T>* block;
@@ -266,7 +272,7 @@ public:
 		}
 	};
 	template<class T>
-	class const_reverse_iterator {
+	class const_reverse_iterator : std::iterator<std::forward_iterator_tag, T> {
 		friend class dynamic_arr<T>;
 		friend class const_iterator<T>;
 		arr_block<T>* block;
