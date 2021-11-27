@@ -103,11 +103,8 @@ void commit() {
 	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
 	test.commit();
 	for (uint32_t i = 0; i < 1000; i++) {
-		if (test[i] != i) {
-			std::cout << "Err! [" << i << "] " << test[i] << std::endl;
-			std::cout << "Commit test: failed" << std::endl;
-			return;
-		}
+		if (test[i] != i)
+			assert(false && "Err! test[i] != i");
 	}
 	assert(test.size() == 1000 && "Commit failed [size missmatch]");
 	assert(test.blocks_count() == 1 && "Commit failed failed [blocks missmatch]");
@@ -118,11 +115,8 @@ void decommit() {
 	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
 	test.decommit(4);
 	for (uint32_t i = 0; i < 1000; i++) {
-		if (test[i] != i) {
-			std::cout << "Err! [" << i << "] " << test[i] << std::endl;
-			std::cout << "Decommit test: failed" << std::endl;
-			return;
-		}
+		if (test[i] != i)
+			assert(false && "Err! test[i] != i");
 	}
 
 
@@ -136,11 +130,8 @@ void remove_item() {
 	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
 	test.remove(500);
 	for (uint32_t i = 0; i < 999; i++) {
-		if (test[i] != i + (i >= 500)) {
-			std::cout << "Err! [" << i << "] " << test[i] << std::endl;
-			std::cout << "Remove item test: failed" << std::endl;
-			return;
-		}
+		if (test[i] != i + (i >= 500))
+			assert(false && "Err! test[i] != i");
 	}
 	assert(test.size() == 999 && "Remove item test: failed [size missmatch]");
 	std::cout << "Remove item test: passed" << std::endl;
@@ -150,13 +141,9 @@ void remove_items() {
 	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
 	test.remove(400,600);
 	for (uint32_t i = 0; i < 800; i++) {
-		if (test[i] != i + (i >= 400 ? 200 : 0)) {
-			std::cout << "Err! [" << i << "] " << test[i] << std::endl;
-			std::cout << "Remove items test: failed" << std::endl;
-			return;
-		}
+		if (test[i] != i + (i >= 400 ? 200 : 0))
+			assert(false && "Err! test[i] != i");
 	}
-
 	assert(test.size() == 800 && "Remove items test: failed [size missmatch]");
 	std::cout << "Remove items test: passed" << std::endl;
 }
@@ -167,16 +154,68 @@ void foreach_test() {
 	uint64_t res_0 = 0;
 	uint64_t res_1 = 0;
 	uint64_t res_2 = 0;
+	uint64_t res_3 = 0;
 	test.foreach([&res_0](uint32_t& it) { res_0 += it; });
+	test.forreach([&res_1](uint32_t& it) { res_1 += it; });
 
 	for (uint32_t& it : test)
-		res_1 += it;
+		res_2 += it;
 	
 	for (uint32_t i = 0; i < 1000; i++)
-		res_2 += test[i];
+		res_3 += test[i];
 
-	assert(res_0 == res_1 && res_1 == res_2 && "For test failed [result missmatch]");
+	assert(res_0 == res_1 && res_1 == res_2 && res_2 == res_3 && "For test failed [result missmatch]");
 	std::cout << "For test: passed" << std::endl;
+}
+void reverse_foreach_test() {
+	list_array<uint32_t> test;
+	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	uint32_t for_test = 900;
+	for (uint32_t& it : test.reverse_range(0,900)) {
+		if (it != --for_test)
+			assert(false && "Err! test[i] != i");
+	}
+	assert(for_test == 0 && "Reverse for test failed [result missmatch]");
+	std::cout << "Reverse for test: passed" << std::endl;
+}
+
+void flip() {
+	list_array<uint32_t> test;
+	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	auto copy = test.flip_copy();
+	uint32_t copy_test = 1000;
+	copy.foreach([&copy_test](uint32_t it) { 
+		assert(it == --copy_test && "Flip test failed cause missmatch");
+	});
+	std::cout << "Flip test: passed" << std::endl;
+}
+
+void forreach() {
+	list_array<uint32_t> test;
+	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	auto copy = test.flip_copy();
+	size_t i = 0;
+
+	copy.forreach([&test,&i](uint32_t it) {
+		assert(it != test[i++]  && "For revese each test failed cause missmatch");
+	});
+	std::cout << "For reverse each test: passed" << std::endl;
+}
+
+void forreach_range() {
+	list_array<uint32_t> test;
+	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	auto copy = test.flip_copy();
+	size_t i = 100;
+
+	copy.forreach(
+		[&test, &i](uint32_t it) {
+			assert(it != test[i++] && "For revese each range test failed cause missmatch");
+		},
+		100,
+		300
+	);
+	std::cout << "For reverse each range test: passed" << std::endl;
 }
 
 
@@ -193,6 +232,12 @@ void main() {
 	remove_items();
 
 	foreach_test();
+	reverse_foreach_test();
+
+	flip();
+	forreach();
+	forreach_range();
+
 
 	std::cout << "list array tests: passed" << std::endl;
 	speed_test();
