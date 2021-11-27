@@ -1,63 +1,64 @@
-#include "list_array.hpp"
 #include <iostream>
 #include <chrono>
 #include <assert.h>
+#include "list_array.hpp"
+
 void speed_test() {
 	for (size_t i = 0; i < 1; i++) {
 		std::chrono::steady_clock::time_point curr;
 
 		list_array<uint32_t> test;
+		uint64_t a = 0;
+
 		std::cout << "Push only time: ";
 		curr = std::chrono::high_resolution_clock::now();
 		for (uint32_t i = 0; i < 1000000000; i++)test.push_front(i);
 		std::cout << std::chrono::high_resolution_clock::now() - curr << std::endl;
 
-
-
 		std::cout << "Commit to one block time: ";
 		curr = std::chrono::high_resolution_clock::now();
 		test.commit();
 		std::cout << std::chrono::high_resolution_clock::now() - curr << std::endl;
-
+		
 		std::cout << "Default index 1000000000 elems time: ";
 		curr = std::chrono::high_resolution_clock::now();
-		for (uint32_t i = 0; i < 1000000000; i++) {
-			if (test[i] != i)
-				std::cout << "Err! [" << i << "] " << test[i] << std::endl;
-		}
-		std::cout << std::chrono::high_resolution_clock::now() - curr << std::endl;
+		for (uint32_t i = 0; i < 1000000000; i++) 
+			a += test[i];
+		std::cout << std::chrono::high_resolution_clock::now() - curr << ", elems sum: " << a << std::endl;
 
-
+		std::cout << "Remove speed: ";
+		test.remove(test.size() - 100, test.size());
 		std::cout << "Foreach 1000000000 elems time: ";
 		curr = std::chrono::high_resolution_clock::now();
-		uint64_t a = 0;
+		a = 0;
 		test.foreach([&a](uint32_t& it) { a += it; });
-		std::cout << std::chrono::high_resolution_clock::now() - curr;
+		std::cout << std::chrono::high_resolution_clock::now() - curr << ", elems sum: " << a << std::endl;
 
-		std::cout << ", elems sum: " << a << std::endl;
+		std::cout << "Remove if (half array): " << test.size() << "   ";
 
-		std::cout << "Remove if (half array): ";
 		curr = std::chrono::high_resolution_clock::now();
 		test.remove_if([](auto& it) { return (bool)(it & 1); });
-		std::cout << std::chrono::high_resolution_clock::now() - curr << std::endl;
-
+		std::cout << std::chrono::high_resolution_clock::now() - curr << test.size() << std::endl << std::endl;
 
 		std::cout << "After remove if foreach: ";
 		curr = std::chrono::high_resolution_clock::now();
 		a = 0;
 		test.foreach([&a](uint32_t& it) { a += it; });
-		std::cout << std::chrono::high_resolution_clock::now() - curr;
-		std::cout << ", elems sum: " << a << std::endl;
+		std::cout << std::chrono::high_resolution_clock::now() - curr << ", elems sum: " << a << std::endl;
 	}
 }
-inline void index() {
+
+
+void index() {
 	list_array<int> test(60);
 	for (size_t i = 0; i < 60; i++)
 		test[i] = i;
 	for (size_t i = 0; i < 60; i++)
 		assert(test[i] == i && "Index test failed [missmatch]");
+	std::cout << "Index test: passed" << std::endl;
 }
-inline void insert_ourselt_begin() {
+
+void insert_ourselt_begin() {
 	int test_arr[] = { 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59 };
 	list_array<int> test(60);
 	for (size_t i = 0; i < 60; i++)
@@ -68,8 +69,9 @@ inline void insert_ourselt_begin() {
 		assert(test[i] == test_arr[i] && "Insert test 0 failed [put missmatch]");
 	assert(test.blocks_count() == 2 && "Insert test 0 failed [blocks missmatch]");
 	assert(!test.need_commit() && "Insert test 0 failed [need commit equlation missmatch]");
+	std::cout << "Insert ourself begin: passed" << std::endl;
 }
-inline void insert_ourselt_end() {
+void insert_ourselt_end() {
 	int test_arr[] = { 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59 };
 	list_array<int> test(60);
 	for (size_t i = 0; i < 60; i++)
@@ -80,8 +82,9 @@ inline void insert_ourselt_end() {
 		assert(test[i] == test_arr[i] && "Insert test 1 failed [put missmatch]");
 	assert(test.blocks_count() == 2 && "Insert test 1 failed [blocks missmatch]");
 	assert(!test.need_commit() && "Insert test 1 failed [need commit equlation missmatch]");
+	std::cout << "Insert ourself end: passed" << std::endl;
 }
-inline void insert_ourselt_mindle() {
+void insert_ourselt_mindle() {
 	int test_arr[] = { 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59 };
 	list_array<int> test(60);
 	for (size_t i = 0; i < 60; i++)
@@ -92,13 +95,105 @@ inline void insert_ourselt_mindle() {
 		assert(test[i] == test_arr[i] && "Insert test 2 failed [put missmatch]");
 	assert(test.blocks_count() == 3 && "Insert test 2 failed [blocks missmatch]");
 	assert(test.need_commit() && "Insert test 2 failed [need commit equlation missmatch]");
+	std::cout << "Insert ourself mindle: passed" << std::endl;
 }
+
+void commit() {
+	list_array<uint32_t> test;
+	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	test.commit();
+	for (uint32_t i = 0; i < 1000; i++) {
+		if (test[i] != i) {
+			std::cout << "Err! [" << i << "] " << test[i] << std::endl;
+			std::cout << "Commit test: failed" << std::endl;
+			return;
+		}
+	}
+	assert(test.size() == 1000 && "Commit failed [size missmatch]");
+	assert(test.blocks_count() == 1 && "Commit failed failed [blocks missmatch]");
+	std::cout << "Commit test: passed" << std::endl;
+}
+void decommit() {
+	list_array<uint32_t> test;
+	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	test.decommit(4);
+	for (uint32_t i = 0; i < 1000; i++) {
+		if (test[i] != i) {
+			std::cout << "Err! [" << i << "] " << test[i] << std::endl;
+			std::cout << "Decommit test: failed" << std::endl;
+			return;
+		}
+	}
+
+
+	assert(test.size() == 1000 && "Decommit failed [size missmatch]");
+	assert(test.blocks_count() == 4 && "Decommit failed failed [blocks missmatch]");
+	std::cout << "Decommit test: passed" << std::endl;
+}
+
+void remove_item() {
+	list_array<uint32_t> test;
+	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	test.remove(500);
+	for (uint32_t i = 0; i < 999; i++) {
+		if (test[i] != i + (i >= 500)) {
+			std::cout << "Err! [" << i << "] " << test[i] << std::endl;
+			std::cout << "Remove item test: failed" << std::endl;
+			return;
+		}
+	}
+	assert(test.size() == 999 && "Remove item test: failed [size missmatch]");
+	std::cout << "Remove item test: passed" << std::endl;
+}
+void remove_items() {
+	list_array<uint32_t> test;
+	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	test.remove(400,600);
+	for (uint32_t i = 0; i < 800; i++) {
+		if (test[i] != i + (i >= 400 ? 200 : 0)) {
+			std::cout << "Err! [" << i << "] " << test[i] << std::endl;
+			std::cout << "Remove items test: failed" << std::endl;
+			return;
+		}
+	}
+
+	assert(test.size() == 800 && "Remove items test: failed [size missmatch]");
+	std::cout << "Remove items test: passed" << std::endl;
+}
+
+void foreach_test() {
+	list_array<uint32_t> test;
+	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	uint64_t res_0 = 0;
+	uint64_t res_1 = 0;
+	uint64_t res_2 = 0;
+	test.foreach([&res_0](uint32_t& it) { res_0 += it; });
+
+	for (uint32_t& it : test)
+		res_1 += it;
+	
+	for (uint32_t i = 0; i < 1000; i++)
+		res_2 += test[i];
+
+	assert(res_0 == res_1 && res_1 == res_2 && "For test failed [result missmatch]");
+	std::cout << "For test: passed" << std::endl;
+}
+
 
 void main() {
 	index();
+
 	insert_ourselt_begin();
 	insert_ourselt_end();
 	insert_ourselt_mindle();
+
+	commit();
+	decommit();
+	remove_item();
+	remove_items();
+
+	foreach_test();
+
 	std::cout << "list array tests: passed" << std::endl;
 	speed_test();
 }
