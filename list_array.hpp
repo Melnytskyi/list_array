@@ -505,7 +505,71 @@ private:
 		}
 
 
-		
+		size_t _remove_items(arr_block<T>* block, size_t start, size_t end) {
+			size_t size = block->_size;
+			size_t new_size = block->_size - (end - start);
+			if (new_size == 0) {
+				if (arr == block)
+					arr = block->next_;
+				if (arr_end == block)
+					arr_end = block->_prev;
+				block->good_bye_world();
+			}
+			else {
+				T* new_arr = new T[new_size];
+				T* arr_inter = block->arr_contain;
+				size_t j = 0;
+				for (size_t i = 0; j < new_size && i < size; i++) {
+					if (i == start)
+						i = end;
+					new_arr[j++] = arr_inter[i];
+				}
+				delete[] arr_inter;
+				block->arr_contain = new_arr;
+				block->_size = new_size;
+			}
+			return size - new_size;
+		}
+		template<class _Fn>
+		size_t _remove_if(arr_block<T>* block, _Fn func, size_t start, size_t end) {
+			// value >> 3  ==  value / 8
+			size_t size = block->_size;
+			size_t rem_filt_siz =
+				size > end ?
+				(size >> 3) + (size & 7 ? 1 : 0) :
+				(end >> 3) + (end & 7 ? 1 : 0);
+			uint8_t* remove_filter = new uint8_t[rem_filt_siz](0);
+			T* arr_inter = block->arr_contain;
+			size_t new_size = size;
+
+			for (size_t i = start; i < end; i++) {
+				if (func(arr_inter[i])) {
+					remove_filter[i >> 3] |= 1 << (i & 7);
+					new_size--;
+				}
+			}
+			if (size != new_size) {
+				if (new_size == 0 && size == end) {
+					if (arr == block)
+						arr = block->next_;
+					if (arr_end == block)
+						arr_end = block->_prev;
+					block->good_bye_world();
+				}
+				else {
+					T* new_arr = new T[new_size];
+					size_t j = 0;
+					for (size_t i = 0; j < new_size && i < end; i++)
+						if (!(remove_filter[i >> 3] & (1 << (i & 7))))
+							new_arr[j++] = arr_inter[i];
+					delete[] block->arr_contain;
+					block->arr_contain = new_arr;
+					block->_size = new_size;
+				}
+			}
+			delete[] remove_filter;
+			return size - new_size;
+		}
 	public:
 		void safe_destruct() {
 			arr_block<T>* blocks = arr;
@@ -759,47 +823,30 @@ private:
 				remove_item_split(inter.pos, this_block);
 			_size--;
 		}
-
-		template<class _Fn>
-		size_t _remove_if(arr_block<T>* block, _Fn func, size_t start, size_t end) {
-			// value >> 3  ==  value / 8
-			size_t size = block->_size;
-			size_t rem_filt_siz =
-				size > end ?
-					size >> 3 + (size >> 3 ? 0 : 1) :
-					end >> 3 + (end >> 3 ? 0 : 1);
-			uint8_t* remove_filter = new uint8_t[rem_filt_siz](0);
-			T* arr_inter = block->arr_contain;
-			size_t new_size = size;
-
-			for (size_t i = 0; i < end; i++) {
-				if (func(arr_inter[i])) {
-					remove_filter[i >> 3] |= 1 << (i & 7);
-					new_size--;
-				}
+		size_t remove_items(size_t start_pos, size_t end_pos) {
+			interator<T> interate = get_interator(start_pos);
+			interator<T> _end = get_interator(end_pos);
+			size_t removed = 0;
+			if (interate.block == _end.block) {
+				removed = _remove_items(interate.block, interate.pos, _end.pos);
+				_size -= removed;
+				return removed;
 			}
-			if (size != new_size) {
-				if (new_size == 0 && size == end) {
-					if (arr == block) 
-						arr = block->next_;
-					if (arr_end == block)
-						arr_end = block->_prev;
-					block->good_bye_world();
-				}
-				else {
-					new_size += size - end;
-					T* new_arr = new T[new_size];
-					size_t j = 0;
-					for (size_t i = 0; j < new_size && i < end; i++) 
-						if (!(remove_filter[i >> 3] & (1 << (i & 7)))) 
-							new_arr[j++] = arr_inter[i];
-					delete[] block->arr_contain;
-					block->arr_contain = new_arr;
-					block->_size = new_size;
-				}
+
+			removed += _remove_items(interate.block, interate.pos, interate.block->_size);
+			for (;;) {
+				if (!interate.nextBlock())
+					break;
+				removed += _remove_items(interate.block, 0, interate.block->_size);
 			}
-			delete[] remove_filter;
-			return size - new_size;
+
+			if (_end.block)
+				removed += _remove_items(_end.block, 0, _end.pos);
+			else if (interate.block)
+				removed += _remove_items(interate.block, 0, interate.block->_size);
+
+			_size -= removed;
+			return removed;
 		}
 		template<class _Fn>
 		size_t remove_if(_Fn func,size_t start,size_t end) {
@@ -808,8 +855,11 @@ private:
 			interator<T> interate = get_interator(start);
 			interator<T> _end = get_interator(end);
 			size_t removed = 0;
-			if (interate.block == _end.block)
-				return _remove_if(interate.block, func, interate.pos, _end.pos);
+			if (interate.block == _end.block) {
+				removed = _remove_if(interate.block, func, interate.pos, _end.pos);
+				_size -= removed;
+				return removed;
+			}
 
 			removed += _remove_if(interate.block, func, interate.pos, interate.block->_size);
 			for (;;) {
@@ -893,6 +943,8 @@ public:
 
 	void remove(size_t pos) {
 		if (_size == 0)return;
+		if (pos > _size)
+			throw std::out_of_range("pos value(" + std::to_string(pos) + ") out of size limit(" + std::to_string(_size) + ")");
 		arr.remove_item(reserved_begin + pos);
 		_size--;
 		if (_size == 0) return safe_destruct();
@@ -900,11 +952,11 @@ public:
 	void remove(size_t start_pos, size_t end_pos) {
 		if (start_pos > end_pos)
 			std::swap(start_pos, end_pos);
-		end_pos -= start_pos;
-		for (size_t i = 0; i <= end_pos; i++) {
-			if (!_size)return;
-			remove(start_pos);
-		}
+		if (end_pos > _size)
+			throw std::out_of_range("end_pos value(" + std::to_string(end_pos) + ") out of size limit(" + std::to_string(_size) + ")");
+		if (start_pos > _size)
+			throw std::out_of_range("start_pos value(" + std::to_string(start_pos) + ") out of size limit(" + std::to_string(_size) + ")");
+		_size -= arr.remove_items(reserved_begin + start_pos, reserved_begin + end_pos);
 	}
 
 	void reserve_push_begin(size_t reserve_size) {
@@ -1133,14 +1185,22 @@ public:
 				interate_function(it);
 	}
 	template<class _Fn>
-	void remove_if(_Fn check_function) {
-		_size -= arr.remove_if(check_function, reserved_begin, reserved_begin + _size);
+	size_t remove_if(_Fn check_function) {
+		size_t res = arr.remove_if(check_function, reserved_begin, reserved_begin + _size);
+		_size -= res;
+		return res;
 	}
 	template<class _Fn>
-	void remove_if(_Fn check_function, size_t start, size_t end) {
+	size_t remove_if(_Fn check_function, size_t start, size_t end) {
 		if (start > end)
 			std::swap(start, end);
-		_size -= arr.remove_if(check_function, reserved_begin + start, reserved_begin + end);
+		if (end > _size)
+			throw std::out_of_range("end value(" + std::to_string(end) + ") out of size limit("+std::to_string(_size)+")");
+		if (start > _size)
+			throw std::out_of_range("start value(" + std::to_string(start) + ") out of size limit(" + std::to_string(_size) + ")");
+		size_t res = arr.remove_if(check_function, reserved_begin + start, reserved_begin + end);
+		_size -= res;
+		return res;
 	}
 
 	list_array& flip_self() {
