@@ -5,6 +5,15 @@
 #include <stdexcept>
 #include <iterator>
 
+#if __cplusplus  >= 20202L
+#define req(require) requires require
+#define conexpr constexpr
+#else
+#define req(require)
+#define conexpr
+#endif
+
+
 
 template<class T>
 class list_array {
@@ -13,7 +22,7 @@ class list_array {
 	template<class T>
 	class arr_block; 
 	template<class T>
-	static T* cxxresize(T* val, size_t old_size, size_t new_size) {
+	conexpr static T* cxxresize(T* val, size_t old_size, size_t new_size) {
 		if (new_size == old_size)
 			return val;
 		T* new_val = new T[new_size];
@@ -65,20 +74,20 @@ public:
 		using pointer = T*;
 		using reference = T&;
 
-		iterator() { block = nullptr; pos = 0; }
-		iterator& operator=(const iterator& seter) {
+		conexpr iterator() { block = nullptr; pos = 0; }
+		conexpr iterator& operator=(const iterator& seter) {
 			block = seter.block;
 			pos = seter.pos;
 			return *this;
 		}
-		iterator(const iterator& copy) {
+		conexpr iterator(const iterator& copy) {
 			*this = copy;
 		}
-		iterator(arr_block<T>* block_pos, size_t set_pos) {
+		conexpr iterator(arr_block<T>* block_pos, size_t set_pos) {
 			block = block_pos;
 			pos = set_pos;
 		}
-		iterator& operator++() {
+		conexpr iterator& operator++() {
 			if (block) {
 				if (block->_size <= ++pos) {
 					block = block->next_;
@@ -87,12 +96,12 @@ public:
 			}
 			return *this;
 		}
-		iterator operator++(int) const {
+		conexpr iterator operator++(int) const {
 			iterator tmp = *this;
 			++const_cast<iterator&>(*this);
 			return tmp;
 		}
-		iterator& operator--() {
+		conexpr iterator& operator--() {
 			if (block) {
 				if (0 == --pos) {
 					block = block->_prev;
@@ -101,21 +110,21 @@ public:
 			}
 			return *this;
 		}
-		iterator operator--(int) const {
+		conexpr iterator operator--(int) const {
 			iterator tmp = *this;
 			--const_cast<iterator&>(*this);
 			return tmp;
 		}
-		bool operator==(const iterator& comparer) const {
+		conexpr bool operator==(const iterator& comparer) const {
 			return block == comparer.block && pos == comparer.pos;
 		}
-		bool operator!=(const iterator& comparer) const {
+		conexpr bool operator!=(const iterator& comparer) const {
 			return !(*this == comparer) && block ? pos < block->_size : 0;
 		}
-		T& operator*() { return block->arr_contain[pos]; }
-		const T& operator*() const { return block->arr_contain[pos]; }
-		iterator& operator->() { return *this; }
-		void fast_load(T* arr, size_t arr_size) {
+		conexpr T& operator*() { return block->arr_contain[pos]; }
+		conexpr const T& operator*() const { return block->arr_contain[pos]; }
+		conexpr iterator& operator->() { return *this; }
+		conexpr void fast_load(T* arr, size_t arr_size) {
 			size_t j = pos;
 			arr_block<T>* block_tmp = block;
 			size_t block_size = block_tmp->_size;
@@ -131,7 +140,7 @@ public:
 				block_arr = block_tmp->arr_contain;
 			}
 		}
-		bool nextBlock() {
+		conexpr bool nextBlock() {
 			block = block ? block->next_ : block;
 			pos = 0;
 			return block && (block ? block->next_ : block);
@@ -150,28 +159,28 @@ public:
 		using pointer = T*;
 		using reference = T&;
 
-		const_iterator() { block = nullptr; pos = 0; }
-		const_iterator& operator=(const const_iterator& seter) {
+		conexpr const_iterator() { block = nullptr; pos = 0; }
+		conexpr const_iterator& operator=(const const_iterator& seter) {
 			block = seter.block;
 			pos = seter.pos;
 			return *this;
 		}
-		const_iterator(const const_iterator& copy) {
+		conexpr const_iterator(const const_iterator& copy) {
 			*this = copy;
 		}
-		const_iterator& operator=(const iterator<T>& seter) {
+		conexpr const_iterator& operator=(const iterator<T>& seter) {
 			block = seter.block;
 			pos = seter.pos;
 			return *this;
 		}
-		const_iterator(const iterator<T>& copy) {
+		conexpr const_iterator(const iterator<T>& copy) {
 			*this = copy;
 		}
-		const_iterator(arr_block<T>* block_pos, size_t set_pos) {
+		conexpr const_iterator(arr_block<T>* block_pos, size_t set_pos) {
 			block = block_pos;
 			pos = set_pos;
 		}
-		const_iterator& operator++() {
+		conexpr const_iterator& operator++() {
 			if (block) {
 				if (block->_size <= ++pos) {
 					block = block->next_;
@@ -180,12 +189,12 @@ public:
 			}
 			return *this;
 		}
-		const_iterator operator++(int) {
+		conexpr const_iterator operator++(int) {
 			const_iterator tmp = *this;
 			++(*this);
 			return tmp;
 		}
-		const_iterator& operator--() {
+		conexpr const_iterator& operator--() {
 			if (block) {
 				if (0 == --pos) {
 					block = block->_prev;
@@ -194,19 +203,23 @@ public:
 			}
 			return *this;
 		}
-		const_iterator operator--(int) {
+		conexpr const_iterator operator--(int) {
 			const_iterator tmp = *this;
 			--(*this);
 			return tmp;
 		}
-		bool operator==(const const_iterator& comparer) const {
+		conexpr bool operator==(const const_iterator& comparer) const {
 			return block == comparer.block && pos == comparer.pos;
 		}
-		bool operator!=(const const_iterator& comparer) const {
+		conexpr bool operator!=(const const_iterator& comparer) const {
 			return !(*this == comparer) && (block ? pos < block->_size : 0);
 		}
-		const T& operator*() { return block->arr_contain[pos]; }
-		const_iterator operator->() { return *this; }
+		conexpr const T& operator*() { 
+			return block->arr_contain[pos];
+		}
+		conexpr const_iterator operator->() {
+			return *this; 
+		}
 	};
 	template<class T>
 	class reverse_iterator {
@@ -221,28 +234,28 @@ public:
 		using pointer = T*;
 		using reference = T&;
 
-		reverse_iterator() { block = nullptr; pos = 0; }
-		reverse_iterator& operator=(const iterator<T>& seter) {
+		conexpr reverse_iterator() { block = nullptr; pos = 0; }
+		conexpr reverse_iterator& operator=(const iterator<T>& seter) {
 			block = seter.block;
 			pos = seter.pos;
 			return *this;
 		}
-		reverse_iterator(const iterator<T>& copy) {
+		conexpr reverse_iterator(const iterator<T>& copy) {
 			*this = copy;
 		}
-		reverse_iterator& operator=(const reverse_iterator& seter) {
+		conexpr reverse_iterator& operator=(const reverse_iterator& seter) {
 			block = seter.block;
 			pos = seter.pos;
 			return *this;
 		}
-		reverse_iterator(const reverse_iterator& copy) {
+		conexpr reverse_iterator(const reverse_iterator& copy) {
 			*this = copy;
 		}
-		reverse_iterator(arr_block<T>* block_pos, size_t set_pos) {
+		conexpr reverse_iterator(arr_block<T>* block_pos, size_t set_pos) {
 			block = block_pos;
 			pos = set_pos;
 		}
-		reverse_iterator& operator++() {
+		conexpr reverse_iterator& operator++() {
 			if (block) {
 				if (0 == pos--) {
 					block = block->_prev;
@@ -251,12 +264,12 @@ public:
 			}
 			return *this;
 		}
-		reverse_iterator operator++(int) {
+		conexpr reverse_iterator operator++(int) {
 			reverse_iterator tmp = *this;
 			++(*this);
 			return tmp;
 		}
-		reverse_iterator& operator--() {
+		conexpr reverse_iterator& operator--() {
 			if (block) {
 				if (block->_size == ++pos) {
 					block = block->next_;
@@ -265,28 +278,28 @@ public:
 			}
 			return *this;
 		}
-		reverse_iterator operator--(int) {
+		conexpr reverse_iterator operator--(int) {
 			reverse_iterator tmp = *this;
 			--(*this);
 			return tmp;
 		}
-		bool operator==(const reverse_iterator& comparer) const {
+		conexpr bool operator==(const reverse_iterator& comparer) const {
 			return block == comparer.block && pos == comparer.pos;
 		}
-		bool operator!=(const reverse_iterator& comparer) const {
+		conexpr bool operator!=(const reverse_iterator& comparer) const {
 			return !(*this == comparer) && block;
 		}
-		T& operator*() {
+		conexpr T& operator*() {
 			auto tmp = *this;
 			++tmp;
 			return tmp.block->arr_contain[tmp.pos];
 		}
-		const T& operator*() const {
+		conexpr const T& operator*() const {
 			auto tmp = *this;
 			++tmp;
 			return tmp.block->arr_contain[tmp.pos];
 		}
-		reverse_iterator& operator->() {
+		conexpr reverse_iterator& operator->() {
 			return *this;
 		}
 	};
@@ -303,44 +316,44 @@ public:
 		using pointer = T*;
 		using reference = T&;
 
-		const_reverse_iterator() { block = nullptr; pos = 0; }
-		const_reverse_iterator& operator=(const const_iterator<T>& seter) {
+		conexpr const_reverse_iterator() { block = nullptr; pos = 0; }
+		conexpr const_reverse_iterator& operator=(const const_iterator<T>& seter) {
 			block = seter.block;
 			pos = seter.pos;
 			return *this;
 		}
-		const_reverse_iterator(const const_iterator<T>& copy) {
+		conexpr const_reverse_iterator(const const_iterator<T>& copy) {
 			*this = copy;
 		}
-		const_reverse_iterator& operator=(const iterator<T>& seter) {
+		conexpr const_reverse_iterator& operator=(const iterator<T>& seter) {
 			block = seter.block;
 			pos = seter.pos;
 			return *this;
 		}
-		const_reverse_iterator(const iterator<T>& copy) {
+		conexpr const_reverse_iterator(const iterator<T>& copy) {
 			*this = copy;
 		}
-		const_reverse_iterator& operator=(const reverse_iterator<T>& seter) {
+		conexpr const_reverse_iterator& operator=(const reverse_iterator<T>& seter) {
 			block = seter.block;
 			pos = seter.pos;
 			return *this;
 		}
-		const_reverse_iterator(const reverse_iterator<T>& copy) {
+		conexpr const_reverse_iterator(const reverse_iterator<T>& copy) {
 			*this = copy;
 		}
-		const_reverse_iterator& operator=(const const_reverse_iterator& seter) {
+		conexpr const_reverse_iterator& operator=(const const_reverse_iterator& seter) {
 			block = seter.block;
 			pos = seter.pos;
 			return *this;
 		}
-		const_reverse_iterator(const const_reverse_iterator& copy) {
+		conexpr const_reverse_iterator(const const_reverse_iterator& copy) {
 			*this = copy;
 		}
-		const_reverse_iterator(arr_block<T>* block_pos, size_t set_pos) {
+		conexpr const_reverse_iterator(arr_block<T>* block_pos, size_t set_pos) {
 			block = block_pos;
 			pos = set_pos;
 		}
-		const_reverse_iterator& operator++() {
+		conexpr const_reverse_iterator& operator++() {
 			if (block) {
 				if (0 == pos--) {
 					block = block->_prev;
@@ -349,12 +362,12 @@ public:
 			}
 			return *this;
 		}
-		const_reverse_iterator operator++(int) {
+		conexpr const_reverse_iterator operator++(int) {
 			const_reverse_iterator tmp = *this;
 			++(*this);
 			return tmp;
 		}
-		const_reverse_iterator& operator--() {
+		conexpr const_reverse_iterator& operator--() {
 			if (block) {
 				if (block->_size == ++pos) {
 					block = block->next_;
@@ -363,23 +376,23 @@ public:
 			}
 			return *this;
 		}
-		const_reverse_iterator operator--(int) {
+		conexpr const_reverse_iterator operator--(int) {
 			const_reverse_iterator tmp = *this;
 			--(*this);
 			return tmp;
 		}
-		bool operator==(const const_reverse_iterator& comparer) const {
+		conexpr bool operator==(const const_reverse_iterator& comparer) const {
 			return block == comparer.block && pos == comparer.pos;
 		}
-		bool operator!=(const const_reverse_iterator& comparer) const {
+		conexpr bool operator!=(const const_reverse_iterator& comparer) const {
 			return !(*this == comparer) && block;
 		}
-		const T& operator*() const {
+		conexpr const T& operator*() const {
 			auto tmp = *this;
 			++tmp;
 			return tmp.block->arr_contain[tmp.pos];
 		}
-		const_reverse_iterator& operator->() { return *this; }
+		conexpr const_reverse_iterator& operator->() { return *this; }
 	};
 
 	class range_provider {
@@ -387,36 +400,36 @@ public:
 		size_t _end;
 		list_array<T>& ln;
 	public:
-		range_provider(list_array<T>& link, size_t start, size_t end) : ln(link) { _start = start; _end = end; }
-		range_provider(const range_provider& copy) : ln(copy.ln) { _start = copy._start; _end = copy._end; }
-		iterator<T> begin() {
+		conexpr range_provider(list_array<T>& link, size_t start, size_t end) : ln(link) { _start = start; _end = end; }
+		conexpr range_provider(const range_provider& copy) : ln(copy.ln) { _start = copy._start; _end = copy._end; }
+		conexpr iterator<T> begin() {
 			return ln.get_iterator(_start);
 		}
-		iterator<T> end() {
+		conexpr iterator<T> end() {
 			return ln.get_iterator(_end);
 		}
-		const_iterator<T> begin() const {
+		conexpr const_iterator<T> begin() const {
 			return ln.get_iterator(_start);
 		}
-		const_iterator<T> end() const {
+		conexpr const_iterator<T> end() const {
 			return ln.get_iterator(_end);
 		}
-		reverse_iterator<T> rbegin() {
+		conexpr reverse_iterator<T> rbegin() {
 			return ln.get_iterator(_end);
 		}
-		reverse_iterator<T> rend() {
+		conexpr reverse_iterator<T> rend() {
 			return ln.get_iterator(_start);
 		}
-		const_reverse_iterator<T> rbegin() const {
+		conexpr const_reverse_iterator<T> rbegin() const {
 			return ln.get_iterator(_end);
 		}
-		const_reverse_iterator<T> rend() const {
+		conexpr const_reverse_iterator<T> rend() const {
 			return ln.get_iterator(_start);
 		}
-		size_t range_start() const {
+		conexpr size_t range_start() const {
 			return _start;
 		}
-		size_t range_end() const {
+		conexpr size_t range_end() const {
 			return _end;
 		}
 	};
@@ -425,18 +438,18 @@ public:
 		size_t _end;
 		const list_array<T>& ln;
 	public:
-		const_range_provider(const list_array<T>& link, size_t start, size_t end) : ln(link) { _start = start; _end = end; }
-		const_range_provider(const const_range_provider& copy) : ln(copy.ln) { _start = copy._start; _end = copy._end; }
-		const_iterator<T> begin() const {
+		conexpr const_range_provider(const list_array<T>& link, size_t start, size_t end) : ln(link) { _start = start; _end = end; }
+		conexpr const_range_provider(const const_range_provider& copy) : ln(copy.ln) { _start = copy._start; _end = copy._end; }
+		conexpr const_iterator<T> begin() const {
 			return ln.get_iterator(_start);
 		}
-		const_iterator<T> end() const {
+		conexpr const_iterator<T> end() const {
 			return ln.get_iterator(_end);
 		}
-		const_reverse_iterator<T> rbegin() const {
+		conexpr const_reverse_iterator<T> rbegin() const {
 			return ln.get_iterator(_end);
 		}
-		const_reverse_iterator<T> rend() const {
+		conexpr const_reverse_iterator<T> rend() const {
 			return ln.get_iterator(_start);
 		}
 	};
@@ -444,20 +457,20 @@ public:
 		reverse_iterator<T> _begin;
 		reverse_iterator<T> _end;
 	public:
-		reverse_provider(range_provider& link) { _begin = link.rbegin(); _end = link.rend(); }
-		reverse_provider(range_provider&& link) { _begin = link.rbegin(); _end = link.rend(); }
-		reverse_provider(list_array<T>& link) { _begin = link.rbegin(); _end = link.rend(); }
-		reverse_provider(const reverse_provider& copy) { _begin = copy._begin; _end = copy._end; }
-		reverse_iterator<T> begin() {
+		conexpr reverse_provider(range_provider& link) { _begin = link.rbegin(); _end = link.rend(); }
+		conexpr reverse_provider(range_provider&& link) { _begin = link.rbegin(); _end = link.rend(); }
+		conexpr reverse_provider(list_array<T>& link) { _begin = link.rbegin(); _end = link.rend(); }
+		conexpr reverse_provider(const reverse_provider& copy) { _begin = copy._begin; _end = copy._end; }
+		conexpr reverse_iterator<T> begin() {
 			return _begin;
 		}
-		reverse_iterator<T> end() {
+		conexpr reverse_iterator<T> end() {
 			return _end;
 		}
-		const_reverse_iterator<T> begin() const {
+		conexpr const_reverse_iterator<T> begin() const {
 			return _begin;
 		}
-		const_reverse_iterator<T> end() const {
+		conexpr const_reverse_iterator<T> end() const {
 			return _end;
 		}
 	};
@@ -465,16 +478,16 @@ public:
 		const_reverse_iterator<T> _begin;
 		const_reverse_iterator<T> _end;
 	public:
-		const_reverse_provider(const range_provider& link) { _begin = link.rbegin(); _end = link.rend(); }
-		const_reverse_provider(const range_provider&& link) { _begin = link.rbegin(); _end = link.rend(); }
-		const_reverse_provider(const const_range_provider& link) { _begin = link.rbegin(); _end = link.rend(); }
-		const_reverse_provider(const const_range_provider&& link) { _begin = link.rbegin(); _end = link.rend(); }
-		const_reverse_provider(const list_array<T>& link) { _begin = link.rbegin(); _end = link.rend(); }
-		const_reverse_provider(const const_reverse_provider& copy) { _begin = copy._begin; _end = copy._end; }
-		const_reverse_iterator<T> begin() const {
+		conexpr const_reverse_provider(const range_provider& link) { _begin = link.rbegin(); _end = link.rend(); }
+		conexpr const_reverse_provider(const range_provider&& link) { _begin = link.rbegin(); _end = link.rend(); }
+		conexpr const_reverse_provider(const const_range_provider& link) { _begin = link.rbegin(); _end = link.rend(); }
+		conexpr const_reverse_provider(const const_range_provider&& link) { _begin = link.rbegin(); _end = link.rend(); }
+		conexpr const_reverse_provider(const list_array<T>& link) { _begin = link.rbegin(); _end = link.rend(); }
+		conexpr const_reverse_provider(const const_reverse_provider& copy) { _begin = copy._begin; _end = copy._end; }
+		conexpr const_reverse_iterator<T> begin() const {
 			return _begin;
 		}
-		const_reverse_iterator<T> end() const {
+		conexpr const_reverse_iterator<T> end() const {
 			return _end;
 		}
 	};
@@ -497,10 +510,10 @@ private:
 			delete this;
 		}
 	public:
-		arr_block() {}
-		arr_block(const arr_block& copy) { operator=(copy); }
-		arr_block(arr_block&& move) noexcept { operator=(std::move(move)); }
-		arr_block(arr_block* prev, size_t len, arr_block* next) {
+		conexpr arr_block() {}
+		conexpr arr_block(const arr_block& copy) { operator=(copy); }
+		conexpr arr_block(arr_block&& move) noexcept { operator=(std::move(move)); }
+		conexpr arr_block(arr_block* prev, size_t len, arr_block* next) {
 			if (_prev = prev)
 				_prev->next_ = this;
 			if (next_ = next)
@@ -508,7 +521,7 @@ private:
 			arr_contain = new T[len];
 			_size = len;
 		}
-		~arr_block() {
+		conexpr ~arr_block() {
 			if (_prev) {
 				_prev->next_ = nullptr;
 				delete _prev;
@@ -520,19 +533,19 @@ private:
 			if (arr_contain)
 				delete[] arr_contain;
 		}
-		T& operator[](size_t pos) {
+		conexpr T& operator[](size_t pos) {
 			return (pos < _size) ? arr_contain[pos] : (*next_)[pos - _size];
 		}
-		const T& operator[](size_t pos) const {
+		conexpr const T& operator[](size_t pos) const {
 			return (pos < _size) ? arr_contain[pos] : (*next_)[pos - _size];
 		}
-		arr_block& operator=(const arr_block& copy) {
+		conexpr arr_block& operator=(const arr_block& copy) {
 			_size = copy._size;
 			arr_contain = new T[_size];
 			for (size_t i = 0; i < _size; i++)
 				arr_contain[i] = copy.arr_contain[i];
 		}
-		arr_block& operator=(arr_block&& move) noexcept {
+		conexpr arr_block& operator=(arr_block&& move) noexcept {
 			arr_contain = move.arr_contain;
 			_prev = move._prev;
 			next_ = move.next_;
@@ -540,19 +553,19 @@ private:
 			move._prev = move.next_ = nullptr;
 			move.arr_contain = nullptr;
 		}
-		T& index_back(size_t pos) {
+		conexpr T& index_back(size_t pos) {
 			return (pos < _size) ? arr_contain[_size - pos - 1] : (*_prev).index_back(pos - _size);
 		}
-		T& index_front(size_t pos) {
+		conexpr T& index_front(size_t pos) {
 			return (pos < _size) ? arr_contain[pos] : (*next_)[pos - _size];
 		}
-		const T& index_back(size_t pos) const {
+		conexpr const T& index_back(size_t pos) const {
 			return (pos < _size) ? arr_contain[_size - pos - 1] : (*_prev).index_back(pos - _size);
 		}
-		const T& index_front(size_t pos) const {
+		conexpr const T& index_front(size_t pos) const {
 			return (pos < _size) ? arr_contain[pos] : (*next_)[pos - _size];
 		}
-		iterator<T> get_iterator(size_t pos) {
+		conexpr iterator<T> get_iterator(size_t pos) {
 			if (!this) return iterator<T>(nullptr, pos);
 			return
 				this ?
@@ -562,7 +575,7 @@ private:
 					) :
 				iterator<T>(nullptr, 0);
 		}
-		iterator<T> get_iterator_back(size_t pos) {
+		conexpr iterator<T> get_iterator_back(size_t pos) {
 			if (!this) return iterator<T>(nullptr, 0);
 			return
 				this ?
@@ -572,7 +585,7 @@ private:
 					) :
 				iterator<T>(nullptr, 0);
 		}
-		const const_iterator<T> get_iterator(size_t pos) const {
+		conexpr const const_iterator<T> get_iterator(size_t pos) const {
 			if (!this) return const_iterator<T>(nullptr, pos);
 			return
 				this ?
@@ -582,7 +595,7 @@ private:
 					) :
 				const_iterator<T>(nullptr, 0);
 		}
-		const const_iterator<T> get_iterator_back(size_t pos) const {
+		conexpr const const_iterator<T> get_iterator_back(size_t pos) const {
 			if (!this) return const_iterator<T>(nullptr, 0);
 			return
 				this ?
@@ -592,7 +605,7 @@ private:
 					) :
 				const_iterator<T>(nullptr, 0);
 		}
-		iterator<T> begin() {
+		conexpr iterator<T> begin() {
 			return
 				this ? (
 					_prev ?
@@ -602,7 +615,7 @@ private:
 				iterator<T>(nullptr, 0)
 				;
 		}
-		iterator<T> end() {
+		conexpr iterator<T> end() {
 			return
 				this ? (
 					next_ ?
@@ -612,7 +625,7 @@ private:
 				iterator<T>(nullptr, 0)
 				;
 		}
-		const_iterator<T> begin() const {
+		conexpr const_iterator<T> begin() const {
 			return
 				this ? (
 					_prev ?
@@ -622,7 +635,7 @@ private:
 				const_iterator<T>(nullptr, 0)
 				;
 		}
-		const_iterator<T> end() const {
+		conexpr const_iterator<T> end() const {
 			return
 				this ? (
 					next_ ?
@@ -632,10 +645,10 @@ private:
 				iterator<T>(nullptr, 0)
 				;
 		}
-		inline size_t size() const {
+		conexpr inline size_t size() const {
 			return _size;
 		}
-		void resize_front(size_t siz) {
+		conexpr void resize_front(size_t siz) {
 			if (!siz) {
 				good_bye_world();
 				return;
@@ -649,7 +662,7 @@ private:
 			}
 			_size = siz;
 		}
-		void resize_begin(size_t siz) {
+		conexpr void resize_begin(size_t siz) {
 			if (!siz) {
 				good_bye_world();
 				return;
@@ -680,7 +693,7 @@ private:
 		arr_block<T>* arr_end = nullptr;
 		size_t _size = 0;
 
-		void swap_block_with_blocks(arr_block<T>& this_block, arr_block<T>& first_block, arr_block<T>& second_block) {
+		conexpr void swap_block_with_blocks(arr_block<T>& this_block, arr_block<T>& first_block, arr_block<T>& second_block) {
 			if (this_block._prev)
 				this_block._prev->next_ = &first_block;
 			if (this_block.next_)
@@ -696,10 +709,10 @@ private:
 		}
 
 
-		void remove_item_slow(size_t pos, arr_block<T>& this_block) {
+		conexpr void remove_item_slow(size_t pos, arr_block<T>& this_block) {
 			if (pos > this_block._size / 2) {
 				size_t mov_to = this_block._size - 1;
-				for (int64_t i = pos; i < mov_to; i++)
+				for (size_t i = pos; i < mov_to; i++)
 					std::swap(this_block.arr_contain[i + 1], this_block.arr_contain[i]);
 				this_block.resize_front(this_block._size - 1);
 			}
@@ -710,7 +723,7 @@ private:
 				this_block.resize_begin(this_block._size - 1);
 			}
 		}
-		void remove_item_split(size_t pos, arr_block<T>& this_block) {
+		conexpr void remove_item_split(size_t pos, arr_block<T>& this_block) {
 			size_t block_size = this_block._size;
 			arr_block<T>& first_block = *new arr_block<T>(nullptr, pos, nullptr);
 			arr_block<T>& second_block = *new arr_block<T>(&first_block, block_size - pos - 1, nullptr);
@@ -725,7 +738,7 @@ private:
 			swap_block_with_blocks(this_block, first_block, second_block);
 		}
 
-		void insert_item_slow(size_t pos, arr_block<T>& this_block, const T& item) {
+		conexpr void insert_item_slow(size_t pos, arr_block<T>& this_block, const T& item) {
 			if (pos > this_block._size / 2) {
 				this_block.resize_front(this_block._size + 1);
 				size_t mov_to = this_block._size - 1;
@@ -741,7 +754,7 @@ private:
 				this_block.arr_contain[pos] = item;
 			}
 		}
-		void insert_item_split(size_t pos, arr_block<T>& this_block, const T& item) {
+		conexpr void insert_item_split(size_t pos, arr_block<T>& this_block, const T& item) {
 			size_t block_size = this_block._size;
 			size_t first_size = pos + 1;
 			arr_block<T>& first_block = *new arr_block<T>(nullptr, first_size + 1, nullptr);
@@ -754,7 +767,7 @@ private:
 				second_block.arr_contain[i - first_size] = this_block.arr_contain[i];
 			swap_block_with_blocks(this_block, first_block, second_block);
 		}
-		void insert_item_slow(size_t pos, arr_block<T>& this_block, T&& item) {
+		conexpr void insert_item_slow(size_t pos, arr_block<T>& this_block, T&& item) {
 			if (pos > this_block._size / 2) {
 				this_block.resize_front(this_block._size + 1);
 				size_t mov_to = this_block._size - 1;
@@ -770,7 +783,7 @@ private:
 				this_block.arr_contain[pos] = std::move(item);
 			}
 		}
-		void insert_item_split(size_t pos, arr_block<T>& this_block, T&& item) {
+		conexpr void insert_item_split(size_t pos, arr_block<T>& this_block, T&& item) {
 			size_t block_size = this_block._size;
 			size_t first_size = pos + 1;
 			arr_block<T>& first_block = *new arr_block<T>(nullptr, first_size + 1, nullptr);
@@ -784,7 +797,7 @@ private:
 			swap_block_with_blocks(this_block, first_block, second_block);
 		}
 
-		void insert_block_split(size_t pos, arr_block<T>& this_block, const T* item, size_t item_size) {
+		conexpr void insert_block_split(size_t pos, arr_block<T>& this_block, const T* item, size_t item_size) {
 			size_t block_size = this_block._size;
 			arr_block<T>& first_block = *new arr_block<T>(nullptr, pos, nullptr);
 			arr_block<T>& second_block = *new arr_block<T>(nullptr, block_size - pos, nullptr);
@@ -803,7 +816,7 @@ private:
 		}
 
 
-		size_t _remove_items(arr_block<T>* block, size_t start, size_t end) {
+		conexpr size_t _remove_items(arr_block<T>* block, size_t start, size_t end) {
 			size_t size = block->_size;
 			size_t new_size = block->_size - (end - start);
 			if (new_size == 0) {
@@ -829,7 +842,7 @@ private:
 			return size - new_size;
 		}
 		template<class _Fn>
-		size_t _remove_if(arr_block<T>* block, _Fn func, size_t start, size_t end) {
+		conexpr size_t _remove_if(arr_block<T>* block, _Fn func, size_t start, size_t end) {
 			// value >> 3  ==  value / 8
 			size_t size = block->_size;
 			size_t rem_filt_siz =
@@ -869,7 +882,7 @@ private:
 			return size - new_size;
 		}
 	public:
-		void clear() {
+		conexpr void clear() {
 			arr_block<T>* blocks = arr;
 			arr_block<T>* this_block;
 			while (blocks != nullptr) {
@@ -881,79 +894,79 @@ private:
 			}
 			_size = 0;
 		}
-		dynamic_arr() {}
-		dynamic_arr(const dynamic_arr& copy) {
+		conexpr dynamic_arr() {}
+		conexpr dynamic_arr(const dynamic_arr& copy) {
 			operator=(copy);
 		}
-		dynamic_arr(dynamic_arr&& move) noexcept {
+		conexpr dynamic_arr(dynamic_arr&& move) noexcept {
 			operator=(std::move(move));
 		}
-		dynamic_arr& operator=(dynamic_arr&& move) noexcept {
+		conexpr dynamic_arr& operator=(dynamic_arr&& move) noexcept {
 			arr = move.arr;
 			arr_end = move.arr_end;
 			_size = move._size;
 			move.arr = move.arr_end = nullptr;
 			return *this;
 		}
-		dynamic_arr& operator=(const dynamic_arr& copy) {
+		conexpr dynamic_arr& operator=(const dynamic_arr& copy) {
 			arr_block<T>& tmp = *(arr = arr_end = new arr_block<T>(nullptr, _size = copy._size, nullptr));
 			size_t i = 0;
 			for (auto& it : copy)
 				tmp[i] = it;
 		}
-		~dynamic_arr() {
+		conexpr ~dynamic_arr() {
 			clear();
 		}
-		T& operator[](size_t pos) {
+		conexpr T& operator[](size_t pos) {
 			return
 				(pos < (_size >> 1)) ?
 				arr->operator[](pos) :
 				arr_end->index_back(_size - pos - 1)
 				;
 		}
-		const T& operator[](size_t pos) const {
+		conexpr const T& operator[](size_t pos) const {
 			return
 				(pos < (_size >> 1)) ?
 				arr->operator[](pos) :
 				arr_end->index_back(_size - pos - 1)
 				;
 		}
-		T& index_back(size_t pos) {
+		conexpr T& index_back(size_t pos) {
 			return arr_end->index_back(_size - pos - 1);
 		}
-		const T& index_back(size_t pos) const {
+		conexpr const T& index_back(size_t pos) const {
 			return arr_end->index_back(_size - pos - 1);
 		}
-		iterator<T> get_iterator(size_t pos) {
+		conexpr iterator<T> get_iterator(size_t pos) {
 			return
 				(pos < (_size >> 1)) ?
 				arr->get_iterator(pos) :
 				arr_end->get_iterator_back(_size - pos - 1)
 				;
 		}
-		const_iterator<T> get_iterator(size_t pos) const {
+		conexpr const_iterator<T> get_iterator(size_t pos) const {
 			return
 				(pos < (_size >> 1)) ?
 				arr->get_iterator(pos) :
 				arr_end->get_iterator_back(_size - pos - 1)
 				;
 		}
-		auto begin() {
+		conexpr auto begin() {
 			return arr->begin();
 		}
-		auto end() {
+		conexpr auto end() {
 			return arr_end->end();
 		}
-		auto begin() const {
+		conexpr auto begin() const {
 			return arr->begin();
 		}
-		auto end() const {
+		conexpr auto end() const {
 			return arr_end->end();
 		}
-		size_t size() const {
+		conexpr size_t size() const {
 			return _size;
 		}
-		void resize_begin(size_t new_size) {
+		conexpr void resize_begin(size_t new_size) {
 			size_t tsize = _size;
 			if (tsize >= new_size) {
 				for (int64_t resizer = tsize - new_size; resizer > 0;) {
@@ -984,15 +997,16 @@ private:
 				if (arr)
 					if (arr->_size + new_size <= _size >> 1) {
 						arr->resize_begin(new_size - tsize + arr_end->_size);
-						goto end;
+						if (!arr_end) arr_end = arr;
+						_size = new_size;
+						return;
 					}
 				arr = new arr_block<T>(nullptr, new_size - tsize, arr);
-			end:
 				if (!arr_end) arr_end = arr;
 			}
 			_size = new_size;
 		}
-		void resize_front(size_t new_size) {
+		conexpr void resize_front(size_t new_size) {
 			size_t tsize = _size;
 			if (tsize >= new_size) {
 				for (int64_t resizer = tsize - new_size; resizer > 0;) {
@@ -1023,15 +1037,16 @@ private:
 				if (arr_end)
 					if (arr_end->_size + new_size <= _size >> 1) {
 						arr_end->resize_front(new_size - tsize + arr_end->_size);
-						goto end;
+						if (!arr) arr = arr_end;
+						_size = new_size;
+						return;
 					}
 				arr_end = new arr_block<T>(arr_end, new_size - tsize, nullptr);
-			end:
 				if (!arr) arr = arr_end;
 			}
 			_size = new_size;
 		}
-		void insert_block(size_t pos, const T* item, size_t item_size) {
+		conexpr void insert_block(size_t pos, const T* item, size_t item_size) {
 			if (pos == _size) {
 				resize_front(_size + item_size);
 				auto iterator = get_iterator(_size - item_size);
@@ -1051,10 +1066,10 @@ private:
 			else
 				insert_block_split(pos, *get_iterator(pos).block, item, item_size);
 		}
-		void insert_block(size_t pos, const arr_block<T>& item) {
+		conexpr void insert_block(size_t pos, const arr_block<T>& item) {
 			insert_block_split(pos, *get_iterator(pos).block, item.arr_contain, item._size);
 		}
-		void insert(size_t pos, const T& item) {
+		conexpr void insert(size_t pos, const T& item) {
 			if (!_size) {
 				resize_front(1);
 				operator[](0) = item;
@@ -1076,7 +1091,7 @@ private:
 				insert_item_split(inter.pos, this_block, item);
 			_size++;
 		}
-		void insert(size_t pos, T&& item) {
+		conexpr void insert(size_t pos, T&& item) {
 			if (!_size) {
 				resize_front(1);
 				operator[](0) = std::move(item);
@@ -1098,7 +1113,7 @@ private:
 				insert_item_split(inter.pos, this_block, std::move(item));
 			_size++;
 		}
-		void remove_item(size_t pos) {
+		conexpr void remove_item(size_t pos) {
 			if (!_size)
 				return;
 			iterator<T> inter = get_iterator(pos);
@@ -1122,7 +1137,7 @@ private:
 				remove_item_split(inter.pos, this_block);
 			_size--;
 		}
-		size_t remove_items(size_t start_pos, size_t end_pos) {
+		conexpr size_t remove_items(size_t start_pos, size_t end_pos) {
 			iterator<T> interate = get_iterator(start_pos);
 			iterator<T> _end = get_iterator(end_pos);
 			size_t removed = 0;
@@ -1148,7 +1163,7 @@ private:
 			return removed;
 		}
 		template<class _Fn>
-		size_t remove_if(_Fn func,size_t start,size_t end) {
+		conexpr size_t remove_if(_Fn func,size_t start,size_t end) {
 			if (!_size)
 				return 0;
 			iterator<T> interate = get_iterator(start);
@@ -1181,48 +1196,48 @@ private:
 	size_t _size = 0;
 	size_t reserved_end = 0;
 public:
-	list_array() {}
-	list_array(const std::initializer_list<T>& vals) {
+	conexpr list_array() {}
+	conexpr list_array(const std::initializer_list<T>& vals) {
 		resize(vals.size());
 		size_t i = 0;
 		for (const T& it : vals)
 			operator[](i++) = it;
 	}
-	list_array(size_t size) {
+	conexpr list_array(size_t size) {
 		resize(size);
 	}
-	list_array(list_array&& move) noexcept {
+	conexpr list_array(list_array&& move) noexcept {
 		operator=(std::move(move));
 	}
-	list_array(const list_array& copy) noexcept {
+	conexpr list_array(const list_array& copy) noexcept {
 		operator=(copy);
 	}
-	list_array& operator=(list_array&& move) noexcept {
+	conexpr list_array& operator=(list_array&& move) noexcept {
 		arr = std::move(move.arr);
 		reserved_begin = move.reserved_begin;
 		_size = move._size;
 		reserved_end = move.reserved_end;
 		return *this;
 	}
-	list_array& operator=(const list_array& copy) {
+	conexpr list_array& operator=(const list_array& copy) {
 		arr = copy.arr;
 		reserved_begin = copy.reserved_begin;
 		_size = copy._size;
 		reserved_end = copy.reserved_end;
 	}
-	size_t alocated() const {
+	conexpr size_t alocated() const {
 		return arr._size * sizeof(T);
 	}
-	size_t size() const {
+	conexpr size_t size() const {
 		return _size;
 	}
 	template<bool do_shrink = false>
-	auto resize(size_t new_size) {
+	conexpr auto resize(size_t new_size) {
 		static_assert(std::is_default_constructible<T>::value, "This type not default constructable");
 		resize<do_shrink>(new_size, T());
 	}
 	template<bool do_shrink = false>
-	void resize(size_t new_size, const T& auto_init) {
+	conexpr void resize(size_t new_size, const T& auto_init) {
 		if (new_size == 0) clear();
 		else {
 			if (reserved_end || !reserved_begin) arr.resize_front(reserved_begin + new_size);
@@ -1237,7 +1252,7 @@ public:
 		_size = new_size;
 	}
 
-	void remove(size_t pos) {
+	conexpr void remove(size_t pos) {
 		if (_size == 0)return;
 		if (pos > _size)
 			throw std::out_of_range("pos value(" + std::to_string(pos) + ") out of size limit(" + std::to_string(_size) + ")");
@@ -1245,7 +1260,7 @@ public:
 		_size--;
 		if (_size == 0) return clear();
 	}
-	void remove(size_t start_pos, size_t end_pos) {
+	conexpr void remove(size_t start_pos, size_t end_pos) {
 		if (start_pos > end_pos)
 			std::swap(start_pos, end_pos);
 		if (end_pos > _size)
@@ -1255,11 +1270,11 @@ public:
 		_size -= arr.remove_items(reserved_begin + start_pos, reserved_begin + end_pos);
 	}
 
-	void reserve_push_begin(size_t reserve_size) {
+	conexpr void reserve_push_begin(size_t reserve_size) {
 		reserved_begin += reserve_size;
 		arr.resize_begin(reserved_begin + _size + reserved_end);
 	}
-	void push_begin(const T& copyer) {
+	conexpr void push_begin(const T& copyer) {
 		if (reserved_begin) {
 			arr[--reserved_begin] = copyer;
 			_size++;
@@ -1269,7 +1284,7 @@ public:
 			push_begin(copyer);
 		}
 	}
-	void push_begin(T&& copyer) {
+	conexpr void push_begin(T&& copyer) {
 		if (reserved_begin) {
 			arr[--reserved_begin] = copyer;
 			_size++;
@@ -1280,11 +1295,11 @@ public:
 		}
 	}
 
-	void reserve_push_front(size_t reserve_size) {
+	conexpr void reserve_push_front(size_t reserve_size) {
 		reserved_end += reserve_size;
 		arr.resize_front(reserved_begin + _size + reserved_end);
 	}
-	void push_front(const T& copyer) {
+	conexpr void push_front(const T& copyer) {
 		if (reserved_end) {
 			arr[reserved_begin + _size++] = copyer;
 			--reserved_end;
@@ -1294,7 +1309,7 @@ public:
 			push_front(copyer);
 		}
 	}
-	void push_front(T&& copyer) {
+	conexpr void push_front(T&& copyer) {
 		if (reserved_end) {
 			arr[reserved_begin + _size++] = std::move(copyer);
 			--reserved_end;
@@ -1305,26 +1320,26 @@ public:
 		}
 	}
 
-	void pop_front() {
+	conexpr void pop_front() {
 		if (_size)
 			remove(_size - 1);
 		else
 			throw std::out_of_range("no items for remove");
 	}
-	void pop_begin() {
+	conexpr void pop_begin() {
 		if (_size)
 			remove(0);
 		else
 			throw std::out_of_range("no items for remove");
 	}
 
-	void insert(size_t pos, const T* item, size_t arr_size) {
+	conexpr void insert(size_t pos, const T* item, size_t arr_size) {
 		if (!arr_size)
 			return;
 		arr.insert_block(reserved_begin + pos, item, arr_size);
 		_size += arr_size;
 	}
-	void insert(size_t pos, const list_array<T>& item) {
+	conexpr void insert(size_t pos, const list_array<T>& item) {
 		if (!item._size)
 			return;
 		T* as_array = item.to_array();
@@ -1332,34 +1347,34 @@ public:
 		_size += item._size;
 		delete[] as_array;
 	}
-	void insert(size_t pos, const T& item) {
+	conexpr void insert(size_t pos, const T& item) {
 		if (pos == _size)
 			return push_front(item);
 		arr.insert(reserved_begin + pos, item);
 		_size++;
 	}
-	void insert(size_t pos, T&& item) {
+	conexpr void insert(size_t pos, T&& item) {
 		if (pos == _size)
 			return push_front(std::move(item));
 		arr.insert(reserved_begin + pos, std::move(item));
 		_size++;
 	}
 
-	void push_begin(T* array, size_t arr_size) {
+	conexpr void push_begin(T* array, size_t arr_size) {
 		insert(0, array, arr_size);
 	}
-	void push_front(T* array, size_t arr_size) {
+	conexpr void push_front(T* array, size_t arr_size) {
 		insert(_size, array, arr_size);
 	}
-	void push_begin(const list_array<T>& to_push) {
+	conexpr void push_begin(const list_array<T>& to_push) {
 		insert(0, to_push);
 	}
-	void push_front(const list_array<T>& to_push) {
+	conexpr void push_front(const list_array<T>& to_push) {
 		insert(_size, to_push);
 	}
 
 	//index optimization
-	void commit() {
+	conexpr void commit() {
 		T* tmp = new T[_size];
 		begin().fast_load(tmp, _size);
 		arr.clear();
@@ -1369,7 +1384,7 @@ public:
 		arr._size = _size;
 	}
 	//insert and remove optimization
-	void decommit(size_t total_blocks) {
+	conexpr void decommit(size_t total_blocks) {
 		if (total_blocks > _size)
 			throw std::out_of_range("blocks count more than elements count");
 		if (total_blocks == 0)
@@ -1407,10 +1422,10 @@ public:
 		arr._size = _size;
 		reserved_begin = reserved_end = 0;
 	}
-	bool need_commit() const {
+	conexpr bool need_commit() const {
 		return arr.arr != arr.arr_end && arr.arr->next_ != arr.arr_end;
 	}
-	bool blocks_more(size_t blocks_count) const {
+	conexpr bool blocks_more(size_t blocks_count) const {
 		const arr_block<T>* block = arr.arr;
 		size_t res = 0;
 		while (block) {
@@ -1430,12 +1445,12 @@ public:
 		return res;
 	}
 	//remove reserved memory
-	void shrink() {
+	conexpr void shrink() {
 		resize<true>(_size);
 	}
 
 
-	bool contains(const T& value) requires std::equality_comparable<T> {
+	conexpr bool contains(const T& value) req(std::equality_comparable<T>) {
 		for (const T& it : *this)
 			if (it == value)
 				return true;
@@ -1443,14 +1458,14 @@ public:
 	}
 
 	template<class _Fn>
-	bool contains_one(_Fn check_functon) const {
+	conexpr bool contains_one(_Fn check_functon) const {
 		for (const T& it : *this)
 			if (compare_functon(it))
 				return true;
 		return false;
 	}
 	template<class _Fn>
-	size_t contains_multiply(_Fn check_functon) const {
+	conexpr size_t contains_multiply(_Fn check_functon) const {
 		size_t i = 0;
 		for (const T& it : *this)
 			if (compare_functon(it))
@@ -1459,7 +1474,7 @@ public:
 	}
 
 	template<class _Fn>
-	void foreach(_Fn interate_function) {
+	conexpr void foreach(_Fn interate_function) {
 		using res_t = decltype(std::function{ interate_function })::result_type;
 		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
 			for (auto& it : *this)
@@ -1471,7 +1486,7 @@ public:
 				interate_function(it);
 	}
 	template<class _Fn>
-	void foreach(_Fn interate_function) const {
+	conexpr void foreach(_Fn interate_function) const {
 		using res_t = decltype(std::function{ interate_function })::result_type;
 		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
 			for (auto& it : *this)
@@ -1483,7 +1498,7 @@ public:
 				interate_function(it);
 	}
 	template<class _Fn>
-	void foreach(_Fn interate_function, size_t start, size_t end) {
+	conexpr void foreach(_Fn interate_function, size_t start, size_t end) {
 		using res_t = decltype(std::function{ interate_function })::result_type;
 		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
 			for (auto& it : range(start,end))
@@ -1495,7 +1510,7 @@ public:
 				interate_function(it);
 	}
 	template<class _Fn>
-	void foreach(_Fn interate_function, size_t start, size_t end) const {
+	conexpr void foreach(_Fn interate_function, size_t start, size_t end) const {
 		using res_t = decltype(std::function{ interate_function })::result_type;
 		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
 			for (auto& it : range(start, end))
@@ -1508,7 +1523,7 @@ public:
 	}
 
 	template<class _Fn>
-	void forreach(_Fn interate_function) {
+	conexpr void forreach(_Fn interate_function) {
 		using res_t = decltype(std::function{ interate_function })::result_type;
 		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
 			for (auto& it : reverse())
@@ -1520,7 +1535,7 @@ public:
 				interate_function(it);
 	}
 	template<class _Fn>
-	void forreach(_Fn interate_function) const {
+	conexpr void forreach(_Fn interate_function) const {
 		using res_t = decltype(std::function{ interate_function })::result_type;
 		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
 			for (auto& it : reverse())
@@ -1532,7 +1547,7 @@ public:
 				interate_function(it);
 	}
 	template<class _Fn>
-	void forreach(_Fn interate_function, size_t start, size_t end) {
+	conexpr void forreach(_Fn interate_function, size_t start, size_t end) {
 		using res_t = decltype(std::function{ interate_function })::result_type;
 		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
 			for (auto& it : reverse_range(start, end))
@@ -1544,7 +1559,7 @@ public:
 				interate_function(it);
 	}
 	template<class _Fn>
-	void forreach(_Fn interate_function, size_t start, size_t end) const {
+	conexpr void forreach(_Fn interate_function, size_t start, size_t end) const {
 		using res_t = decltype(std::function{ interate_function })::result_type;
 		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
 			for (auto& it : reverse_range(start, end))
@@ -1557,13 +1572,13 @@ public:
 	}
 
 	template<class _Fn>
-	size_t remove_if(_Fn check_function) {
+	conexpr size_t remove_if(_Fn check_function) {
 		size_t res = arr.remove_if(check_function, reserved_begin, reserved_begin + _size);
 		_size -= res;
 		return res;
 	}
 	template<class _Fn>
-	size_t remove_if(_Fn check_function, size_t start, size_t end) {
+	conexpr size_t remove_if(_Fn check_function, size_t start, size_t end) {
 		if (start > end)
 			std::swap(start, end);
 		if (end > _size)
@@ -1575,7 +1590,7 @@ public:
 		return res;
 	}
 
-	list_array& flip_self() {
+	conexpr list_array& flip_self() {
 		list_array larr(_size);
 		size_t i = 0;
 		for (auto item : reverse())
@@ -1587,7 +1602,7 @@ public:
 		larr._size = larr.arr._size = 0;
 		return *this;
 	}
-	list_array flip_copy() const {
+	conexpr list_array flip_copy() const {
 		list_array larr(_size);
 		size_t i = 0;
 		for (auto item : reverse())
@@ -1595,27 +1610,27 @@ public:
 		return larr;
 	}
 
-	reverse_provider reverse() {
+	conexpr reverse_provider reverse() {
 		return *this;
 	}
-	const_reverse_provider reverse() const {
+	conexpr const_reverse_provider reverse() const {
 		return *this;
 	}
 
-	range_provider range(size_t start, size_t end) {
+	conexpr range_provider range(size_t start, size_t end) {
 		return range_provider(*this, start, end);
 	}
-	reverse_provider reverse_range(size_t start, size_t end) {
+	conexpr reverse_provider reverse_range(size_t start, size_t end) {
 		return range_provider(*this, start, end);
 	}
-	const_range_provider range(size_t start, size_t end) const {
+	conexpr const_range_provider range(size_t start, size_t end) const {
 		return const_range_provider(*this, start, end);
 	}
-	const_reverse_provider reverse_range(size_t start, size_t end) const {
+	conexpr const_reverse_provider reverse_range(size_t start, size_t end) const {
 		return const_range_provider(*this, start, end);
 	}
 
-	size_t find(const T& value) const requires std::equality_comparable<T> {
+	conexpr size_t find(const T& value) const req(std::equality_comparable<T>) {
 		size_t i = 0;
 		for (auto& it : *this) {
 			if (it == value)
@@ -1624,7 +1639,7 @@ public:
 		}
 		return npos;
 	}
-	size_t find(const T& value,size_t continue_from) const requires std::equality_comparable<T> {
+	conexpr size_t find(const T& value,size_t continue_from) const req(std::equality_comparable<T>) {
 		size_t i = 0;
 		for (auto& it : range(continue_from,_size)) {
 			if (it == value)
@@ -1633,7 +1648,7 @@ public:
 		}
 		return npos;
 	}
-	size_t find(const T* vbeg,const T* vend) const requires std::equality_comparable<T> {
+	conexpr size_t find(const T* vbeg,const T* vend) const req(std::equality_comparable<T>) {
 		size_t i = 0;
 		size_t eq = 0;
 		size_t dif = vend - vbeg;
@@ -1649,7 +1664,7 @@ public:
 		}
 		return npos;
 	}
-	size_t find(const list_array<T>& value) const requires std::equality_comparable<T> {
+	conexpr size_t find(const list_array<T>& value) const req(std::equality_comparable<T>) {
 		size_t i = 0;
 		size_t eq = 0;
 		size_t dif = value.size();
@@ -1665,7 +1680,7 @@ public:
 		}
 		return npos;
 	}
-	size_t find(const T* vbeg, const T* vend, size_t continue_from) const requires std::equality_comparable<T> {
+	conexpr size_t find(const T* vbeg, const T* vend, size_t continue_from) const req(std::equality_comparable<T>) {
 		size_t i = 0;
 		size_t eq = 0;
 		size_t dif = vend - vbeg;
@@ -1681,7 +1696,7 @@ public:
 		}
 		return npos;
 	}
-	size_t find(const list_array<T>& value, size_t continue_from) const requires std::equality_comparable<T> {
+	conexpr size_t find(const list_array<T>& value, size_t continue_from) const req(std::equality_comparable<T>) {
 		size_t i = 0;
 		size_t eq = 0;
 		size_t dif = value.size();
@@ -1698,7 +1713,7 @@ public:
 		return npos;
 	}
 
-	size_t findr(const T& value) const requires std::equality_comparable<T> {
+	conexpr size_t findr(const T& value) const req(std::equality_comparable<T>) {
 		size_t i = 0;
 		for (auto& it : reverse()) {
 			if (it == value)
@@ -1707,7 +1722,7 @@ public:
 		}
 		return npos;
 	}
-	size_t findr(const T& value, size_t continue_from) const requires std::equality_comparable<T> {
+	conexpr size_t findr(const T& value, size_t continue_from) const req(std::equality_comparable<T>) {
 		size_t i = 0;
 		for (auto& it : reverse_range(0, continue_from)) {
 			if (it == value)
@@ -1716,7 +1731,7 @@ public:
 		}
 		return npos;
 	}
-	size_t findr(const T* vbeg, const T* vend) const requires std::equality_comparable<T> {
+	conexpr size_t findr(const T* vbeg, const T* vend) const req(std::equality_comparable<T>) {
 		size_t i = 0;
 		size_t eq = 0;
 		size_t dif = vend - vbeg;
@@ -1732,7 +1747,7 @@ public:
 		}
 		return npos;
 	}
-	size_t findr(const list_array<T>& value) const requires std::equality_comparable<T> {
+	conexpr size_t findr(const list_array<T>& value) const req(std::equality_comparable<T>) {
 		size_t i = 0;
 		size_t eq = 0;
 		size_t dif = value.size();
@@ -1748,7 +1763,7 @@ public:
 		}
 		return npos;
 	}
-	size_t findr(const T* vbeg, const T* vend, size_t continue_from) const requires std::equality_comparable<T>{
+	conexpr size_t findr(const T* vbeg, const T* vend, size_t continue_from) const req(std::equality_comparable<T>) {
 		size_t i = 0;
 		size_t eq = 0;
 		size_t dif = vend - vbeg;
@@ -1764,7 +1779,7 @@ public:
 		}
 		return npos;
 	}
-	size_t findr(const list_array<T>& value, size_t continue_from) const requires std::equality_comparable<T> {
+	conexpr size_t findr(const list_array<T>& value, size_t continue_from) const req(std::equality_comparable<T>) {
 		size_t i = 0;
 		size_t eq = 0;
 		size_t dif = value.size();
@@ -1782,7 +1797,7 @@ public:
 	}
 
 	template<class _Fn>
-	size_t find_it(_Fn find_func) const {
+	conexpr size_t find_it(_Fn find_func) const {
 		size_t i = 0;
 		for (auto& it : *this) {
 			if (find_func(it))
@@ -1792,7 +1807,7 @@ public:
 		return npos;
 	}
 	template<class _Fn>
-	size_t find_it(_Fn find_func,size_t continue_from) const {
+	conexpr size_t find_it(_Fn find_func,size_t continue_from) const {
 		size_t i = 0;
 		for (auto& it : range(continue_from, _size)) {
 			if (find_func(it))
@@ -1803,7 +1818,7 @@ public:
 	}
 
 	template<class _Fn>
-	size_t findr_it(_Fn find_func) const {
+	conexpr size_t findr_it(_Fn find_func) const {
 		size_t i = 0;
 		for (T& it : reverse()) {
 			if (find_func(it))
@@ -1813,7 +1828,7 @@ public:
 		return npos;
 	}
 	template<class _Fn>
-	size_t findr_it(_Fn find_func, size_t continue_from) const {
+	conexpr size_t findr_it(_Fn find_func, size_t continue_from) const {
 		size_t i = 0;
 		for (T& it : reverse_range(0, continue_from)) {
 			if (find_func(it))
@@ -1823,50 +1838,50 @@ public:
 		return npos;
 	}
 
-	void clear() {
+	conexpr void clear() {
 		arr.clear();
 		_size = reserved_end = reserved_begin = 0;
 	}
 
-	iterator<T> get_iterator(size_t pos) {
+	conexpr iterator<T> get_iterator(size_t pos) {
 		return arr.get_iterator(reserved_begin + pos);
 	}
-	iterator<T> begin() {
+	conexpr iterator<T> begin() {
 		return arr.get_iterator(reserved_begin);
 	}
-	iterator<T> end() {
+	conexpr iterator<T> end() {
 		return arr.get_iterator(reserved_begin + _size);
 	}
-	const_iterator<T> get_iterator(size_t pos) const {
+	conexpr const_iterator<T> get_iterator(size_t pos) const {
 		return arr.get_iterator(reserved_begin + pos);
 	}
-	const_iterator<T> begin() const {
+	conexpr const_iterator<T> begin() const {
 		return arr.get_iterator(reserved_begin);
 	}
-	const_iterator<T> end() const {
+	conexpr const_iterator<T> end() const {
 		return arr.get_iterator(reserved_begin + _size);
 	}
 
-	reverse_iterator<T> rbegin() {
+	conexpr reverse_iterator<T> rbegin() {
 		return arr.get_iterator(reserved_begin + _size);
 	}
-	reverse_iterator<T> rend() {
+	conexpr reverse_iterator<T> rend() {
 		return arr.get_iterator(reserved_begin);
 	}
-	const_reverse_iterator<T> rbegin() const {
+	conexpr const_reverse_iterator<T> rbegin() const {
 		return arr.get_iterator(reserved_begin + _size);
 	}
-	const_reverse_iterator<T> rend() const {
+	conexpr const_reverse_iterator<T> rend() const {
 		return arr.get_iterator(reserved_begin);
 	}
-	inline T& operator[](size_t pos) {
+	conexpr inline T& operator[](size_t pos) {
 		return arr[reserved_begin + pos];
 	}
-	inline const T& operator[](size_t pos) const {
+	conexpr inline const T& operator[](size_t pos) const {
 		return arr[reserved_begin + pos];
 	}
 
-	T* to_array() const {
+	conexpr T* to_array() const {
 		T* tmp = new T[_size];
 		size_t i = 0;
 		for (auto iterator : *this)
@@ -1874,3 +1889,6 @@ public:
 		return tmp;
 	}
 };
+
+#undef req
+#undef conexpr
