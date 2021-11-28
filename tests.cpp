@@ -189,6 +189,22 @@ void flip() {
 	});
 	std::cout << "Flip test: passed" << std::endl;
 }
+constexpr bool constexpr_flip() {
+	list_array<uint32_t> test;
+	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	auto copy = test.flip_copy();
+	uint32_t copy_test = 1000;
+	bool result = true;
+	copy.foreach([&copy_test, &result](uint32_t it) {
+		if (it != --copy_test)
+		{
+			result = false;
+			return true;
+		}
+		return false;
+		});
+	return result;
+}
 
 void forreach() {
 	list_array<uint32_t> test;
@@ -235,8 +251,10 @@ void main() {
 	reverse_foreach_test();
 
 	flip();
+	std::cout << "constexpr flip test result:" << constexpr_flip() << std::endl;
 	forreach();
 	forreach_range();
+
 
 
 	std::cout << "list array tests: passed" << std::endl;
