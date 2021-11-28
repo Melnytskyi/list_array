@@ -42,6 +42,7 @@ public:
 	using const_reference = const T&;
 	using size_type = size_t;
 	using difference_type = ptrdiff_t;
+	static constexpr inline const size_t npos = -1;
 
 	template<class T>
 	class reverse_iterator;
@@ -50,7 +51,7 @@ public:
 	template<class T>
 	class const_reverse_iterator;
 	template<class T>
-	class iterator : std::iterator<std::forward_iterator_tag,T> {
+	class iterator {
 		friend class dynamic_arr<T>;
 		friend class const_iterator<T>;
 		friend class reverse_iterator<T>;
@@ -58,6 +59,12 @@ public:
 		arr_block<T>* block;
 		size_t pos;
 	public:
+		using iterator_category = std::forward_iterator_tag;
+		using value_type = T;
+		using difference_type = ptrdiff_t;
+		using pointer = T*;
+		using reference = T&;
+
 		iterator() { block = nullptr; pos = 0; }
 		iterator& operator=(const iterator& seter) {
 			block = seter.block;
@@ -131,12 +138,18 @@ public:
 		}
 	};
 	template<class T>
-	class const_iterator : std::iterator<std::forward_iterator_tag, T> {
+	class const_iterator {
 		friend class dynamic_arr<T>;
 		friend class const_reverse_iterator<T>;
 		arr_block<T>* block;
 		size_t pos;
 	public:
+		using iterator_category = std::forward_iterator_tag;
+		using value_type = T;
+		using difference_type = ptrdiff_t;
+		using pointer = T*;
+		using reference = T&;
+
 		const_iterator() { block = nullptr; pos = 0; }
 		const_iterator& operator=(const const_iterator& seter) {
 			block = seter.block;
@@ -196,12 +209,18 @@ public:
 		const_iterator operator->() { return *this; }
 	};
 	template<class T>
-	class reverse_iterator : std::iterator<std::forward_iterator_tag, T> {
+	class reverse_iterator {
 		friend class dynamic_arr<T>;
 		friend class const_reverse_iterator<T>;
 		arr_block<T>* block;
 		size_t pos;
 	public:
+		using iterator_category = std::forward_iterator_tag;
+		using value_type = T;
+		using difference_type = ptrdiff_t;
+		using pointer = T*;
+		using reference = T&;
+
 		reverse_iterator() { block = nullptr; pos = 0; }
 		reverse_iterator& operator=(const iterator<T>& seter) {
 			block = seter.block;
@@ -272,12 +291,18 @@ public:
 		}
 	};
 	template<class T>
-	class const_reverse_iterator : std::iterator<std::forward_iterator_tag, T> {
+	class const_reverse_iterator {
 		friend class dynamic_arr<T>;
 		friend class const_iterator<T>;
 		arr_block<T>* block;
 		size_t pos;
 	public:
+		using iterator_category = std::forward_iterator_tag;
+		using value_type = T;
+		using difference_type = ptrdiff_t;
+		using pointer = T*;
+		using reference = T&;
+
 		const_reverse_iterator() { block = nullptr; pos = 0; }
 		const_reverse_iterator& operator=(const const_iterator<T>& seter) {
 			block = seter.block;
@@ -844,7 +869,7 @@ private:
 			return size - new_size;
 		}
 	public:
-		void safe_destruct() {
+		void clear() {
 			arr_block<T>* blocks = arr;
 			arr_block<T>* this_block;
 			while (blocks != nullptr) {
@@ -877,7 +902,7 @@ private:
 				tmp[i] = it;
 		}
 		~dynamic_arr() {
-			safe_destruct();
+			clear();
 		}
 		T& operator[](size_t pos) {
 			return
@@ -1155,10 +1180,6 @@ private:
 	size_t reserved_begin = 0;
 	size_t _size = 0;
 	size_t reserved_end = 0;
-	void safe_destruct() {
-		arr.safe_destruct();
-		_size = reserved_end = reserved_begin = 0;
-	}
 public:
 	list_array() {}
 	list_array(const std::initializer_list<T>& vals) {
@@ -1202,7 +1223,7 @@ public:
 	}
 	template<bool do_shrink = false>
 	void resize(size_t new_size, const T& auto_init) {
-		if (new_size == 0) safe_destruct();
+		if (new_size == 0) clear();
 		else {
 			if (reserved_end || !reserved_begin) arr.resize_front(reserved_begin + new_size);
 			reserved_end = 0;
@@ -1222,7 +1243,7 @@ public:
 			throw std::out_of_range("pos value(" + std::to_string(pos) + ") out of size limit(" + std::to_string(_size) + ")");
 		arr.remove_item(reserved_begin + pos);
 		_size--;
-		if (_size == 0) return safe_destruct();
+		if (_size == 0) return clear();
 	}
 	void remove(size_t start_pos, size_t end_pos) {
 		if (start_pos > end_pos)
@@ -1341,7 +1362,7 @@ public:
 	void commit() {
 		T* tmp = new T[_size];
 		begin().fast_load(tmp, _size);
-		arr.safe_destruct();
+		arr.clear();
 		arr.arr = arr.arr_end = new arr_block<T>();
 		arr.arr->arr_contain = tmp;
 		arr.arr->_size = _size;
@@ -1379,7 +1400,7 @@ public:
 			tmp.arr.arr_end->arr_contain[block_iterator++] = (*cur_iterator);
 			++cur_iterator;
 		}
-		arr.safe_destruct();
+		arr.clear();
 		arr.arr = tmp.arr.arr;
 		arr.arr_end = tmp.arr.arr_end;
 		tmp.arr.arr = tmp.arr.arr_end = nullptr;
@@ -1413,7 +1434,8 @@ public:
 		resize<true>(_size);
 	}
 
-	auto contains(const T& value) -> decltype(std::declval<T>() == std::declval<T>()) const {
+
+	bool contains(const T& value) requires std::equality_comparable<T> {
 		for (const T& it : *this)
 			if (it == value)
 				return true;
@@ -1591,6 +1613,219 @@ public:
 	}
 	const_reverse_provider reverse_range(size_t start, size_t end) const {
 		return const_range_provider(*this, start, end);
+	}
+
+	size_t find(const T& value) const requires std::equality_comparable<T> {
+		size_t i = 0;
+		for (auto& it : *this) {
+			if (it == value)
+				return i;
+			++i;
+		}
+		return npos;
+	}
+	size_t find(const T& value,size_t continue_from) const requires std::equality_comparable<T> {
+		size_t i = 0;
+		for (auto& it : range(continue_from,_size)) {
+			if (it == value)
+				return i;
+			++i;
+		}
+		return npos;
+	}
+	size_t find(const T* vbeg,const T* vend) const requires std::equality_comparable<T> {
+		size_t i = 0;
+		size_t eq = 0;
+		size_t dif = vend - vbeg;
+
+		for (auto& it : *this) {
+			if (vbeg[eq] == it)
+				++eq;
+			else
+				eq = 0;
+			if (eq == dif)
+				return i;
+			++i;
+		}
+		return npos;
+	}
+	size_t find(const list_array<T>& value) const requires std::equality_comparable<T> {
+		size_t i = 0;
+		size_t eq = 0;
+		size_t dif = value.size();
+
+		for (auto& it : *this) {
+			if (value[eq] == it)
+				++eq;
+			else
+				eq = 0;
+			if (eq == dif)
+				return i;
+			++i;
+		}
+		return npos;
+	}
+	size_t find(const T* vbeg, const T* vend, size_t continue_from) const requires std::equality_comparable<T> {
+		size_t i = 0;
+		size_t eq = 0;
+		size_t dif = vend - vbeg;
+
+		for (auto& it : range(continue_from, _size)) {
+			if (vbeg[eq] == it)
+				++eq;
+			else
+				eq = 0;
+			if (eq == dif)
+				return i;
+			++i;
+		}
+		return npos;
+	}
+	size_t find(const list_array<T>& value, size_t continue_from) const requires std::equality_comparable<T> {
+		size_t i = 0;
+		size_t eq = 0;
+		size_t dif = value.size();
+
+		for (auto& it : range(continue_from, _size)) {
+			if (value[eq] == it)
+				++eq;
+			else
+				eq = 0;
+			if (eq == dif)
+				return i;
+			++i;
+		}
+		return npos;
+	}
+
+	size_t findr(const T& value) const requires std::equality_comparable<T> {
+		size_t i = 0;
+		for (auto& it : reverse()) {
+			if (it == value)
+				return i;
+			++i;
+		}
+		return npos;
+	}
+	size_t findr(const T& value, size_t continue_from) const requires std::equality_comparable<T> {
+		size_t i = 0;
+		for (auto& it : reverse_range(0, continue_from)) {
+			if (it == value)
+				return i;
+			++i;
+		}
+		return npos;
+	}
+	size_t findr(const T* vbeg, const T* vend) const requires std::equality_comparable<T> {
+		size_t i = 0;
+		size_t eq = 0;
+		size_t dif = vend - vbeg;
+
+		for (auto& it : reverse()) {
+			if (vbeg[eq] == it)
+				++eq;
+			else
+				eq = 0;
+			if (eq == dif)
+				return i;
+			++i;
+		}
+		return npos;
+	}
+	size_t findr(const list_array<T>& value) const requires std::equality_comparable<T> {
+		size_t i = 0;
+		size_t eq = 0;
+		size_t dif = value.size();
+
+		for (auto& it : reverse()) {
+			if (value[eq] == it)
+				++eq;
+			else
+				eq = 0;
+			if (eq == dif)
+				return i;
+			++i;
+		}
+		return npos;
+	}
+	size_t findr(const T* vbeg, const T* vend, size_t continue_from) const requires std::equality_comparable<T>{
+		size_t i = 0;
+		size_t eq = 0;
+		size_t dif = vend - vbeg;
+
+		for (auto& it : reverse_range(0, continue_from)) {
+			if (vbeg[eq] == it)
+				++eq;
+			else
+				eq = 0;
+			if (eq == dif)
+				return i;
+			++i;
+		}
+		return npos;
+	}
+	size_t findr(const list_array<T>& value, size_t continue_from) const requires std::equality_comparable<T> {
+		size_t i = 0;
+		size_t eq = 0;
+		size_t dif = value.size();
+
+		for (auto& it : reverse_range(0, continue_from)) {
+			if (value[eq] == it)
+				++eq;
+			else
+				eq = 0;
+			if (eq == dif)
+				return i;
+			++i;
+		}
+		return npos;
+	}
+
+	template<class _Fn>
+	size_t find_it(_Fn find_func) const {
+		size_t i = 0;
+		for (auto& it : *this) {
+			if (find_func(it))
+				return i;
+			++i;
+		}
+		return npos;
+	}
+	template<class _Fn>
+	size_t find_it(_Fn find_func,size_t continue_from) const {
+		size_t i = 0;
+		for (auto& it : range(continue_from, _size)) {
+			if (find_func(it))
+				return i;
+			++i;
+		}
+		return npos;
+	}
+
+	template<class _Fn>
+	size_t findr_it(_Fn find_func) const {
+		size_t i = 0;
+		for (T& it : reverse()) {
+			if (find_func(it))
+				return i;
+			++i;
+		}
+		return npos;
+	}
+	template<class _Fn>
+	size_t findr_it(_Fn find_func, size_t continue_from) const {
+		size_t i = 0;
+		for (T& it : reverse_range(0, continue_from)) {
+			if (find_func(it))
+				return i;
+			++i;
+		}
+		return npos;
+	}
+
+	void clear() {
+		arr.clear();
+		_size = reserved_end = reserved_begin = 0;
 	}
 
 	iterator<T> get_iterator(size_t pos) {
