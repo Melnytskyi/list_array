@@ -61,12 +61,34 @@ public:
 	class const_reverse_iterator;
 	template<class T>
 	class iterator {
+		friend class list_array<T>;
 		friend class dynamic_arr<T>;
 		friend class const_iterator<T>;
 		friend class reverse_iterator<T>;
 		friend class const_reverse_iterator<T>;
 		arr_block<T>* block;
 		size_t pos;
+		conexpr bool _nextBlock() {
+			block = block ? block->next_ : block;
+			pos = 0;
+			return block && (block ? block->next_ : block);
+		}
+		conexpr void _fast_load(T* arr, size_t arr_size) {
+			size_t j = pos;
+			arr_block<T>* block_tmp = block;
+			size_t block_size = block_tmp->_size;
+			T* block_arr = block->arr_contain;
+
+			for (size_t i = 0; i < arr_size;) {
+				for (; i < arr_size && j < block_size; j++)
+					arr[i++] = block_arr[j];
+				j = 0;
+				block_tmp = block_tmp->next_;
+				if (!block_tmp)return;
+				block_size = block_tmp->_size;
+				block_arr = block_tmp->arr_contain;
+			}
+		}
 	public:
 		using iterator_category = std::forward_iterator_tag;
 		using value_type = T;
@@ -124,9 +146,17 @@ public:
 		conexpr T& operator*() { return block->arr_contain[pos]; }
 		conexpr const T& operator*() const { return block->arr_contain[pos]; }
 		conexpr iterator& operator->() { return *this; }
-		conexpr void fast_load(T* arr, size_t arr_size) {
+	};
+	template<class T>
+	class const_iterator {
+		friend class list_array<T>;
+		friend class dynamic_arr<T>;
+		friend class const_reverse_iterator<T>;
+		const arr_block<T>* block;
+		size_t pos;
+		conexpr void _fast_load(T* arr, size_t arr_size) const {
 			size_t j = pos;
-			arr_block<T>* block_tmp = block;
+			const arr_block<T>* block_tmp = block;
 			size_t block_size = block_tmp->_size;
 			T* block_arr = block->arr_contain;
 
@@ -140,18 +170,6 @@ public:
 				block_arr = block_tmp->arr_contain;
 			}
 		}
-		conexpr bool nextBlock() {
-			block = block ? block->next_ : block;
-			pos = 0;
-			return block && (block ? block->next_ : block);
-		}
-	};
-	template<class T>
-	class const_iterator {
-		friend class dynamic_arr<T>;
-		friend class const_reverse_iterator<T>;
-		arr_block<T>* block;
-		size_t pos;
 	public:
 		using iterator_category = std::forward_iterator_tag;
 		using value_type = T;
@@ -307,7 +325,7 @@ public:
 	class const_reverse_iterator {
 		friend class dynamic_arr<T>;
 		friend class const_iterator<T>;
-		arr_block<T>* block;
+		const arr_block<T>* block;
 		size_t pos;
 	public:
 		using iterator_category = std::forward_iterator_tag;
@@ -1149,7 +1167,7 @@ private:
 
 			removed += _remove_items(interate.block, interate.pos, interate.block->_size);
 			for (;;) {
-				if (!interate.nextBlock())
+				if (!interate._nextBlock())
 					break;
 				removed += _remove_items(interate.block, 0, interate.block->_size);
 			}
@@ -1177,7 +1195,7 @@ private:
 
 			removed += _remove_if(interate.block, func, interate.pos, interate.block->_size);
 			for (;;) {
-				if (!interate.nextBlock())
+				if (!interate._nextBlock())
 					break;
 				removed += _remove_if(interate.block, func, 0, interate.block->_size);
 			}
@@ -1376,7 +1394,7 @@ public:
 	//index optimization
 	conexpr void commit() {
 		T* tmp = new T[_size];
-		begin().fast_load(tmp, _size);
+		begin()._fast_load(tmp, _size);
 		arr.clear();
 		arr.arr = arr.arr_end = new arr_block<T>();
 		arr.arr->arr_contain = tmp;
@@ -1450,8 +1468,14 @@ public:
 	}
 
 
-	conexpr bool contains(const T& value) req(std::equality_comparable<T>) {
+	conexpr bool contains(const T& value) const req(std::equality_comparable<T>) {
 		for (const T& it : *this)
+			if (it == value)
+				return true;
+		return false;
+	}
+	conexpr bool contains(const T& value, size_t start, size_t end) const req(std::equality_comparable<T>) {
+		for (const T& it : range(start,end))
 			if (it == value)
 				return true;
 		return false;
@@ -1468,6 +1492,21 @@ public:
 	conexpr size_t contains_multiply(_Fn check_functon) const {
 		size_t i = 0;
 		for (const T& it : *this)
+			if (compare_functon(it))
+				++i;
+		return i;
+	}
+	template<class _Fn>
+	conexpr bool contains_one(_Fn check_functon, size_t start, size_t end) const {
+		for (const T& it : range(start, end))
+			if (compare_functon(it))
+				return true;
+		return false;
+	}
+	template<class _Fn>
+	conexpr size_t contains_multiply(_Fn check_functon, size_t start, size_t end) const {
+		size_t i = 0;
+		for (const T& it : range(start, end))
 			if (compare_functon(it))
 				++i;
 		return i;
@@ -1883,9 +1922,7 @@ public:
 
 	conexpr T* to_array() const {
 		T* tmp = new T[_size];
-		size_t i = 0;
-		for (auto iterator : *this)
-			tmp[i++] = iterator;
+		begin()._fast_load(tmp, _size);
 		return tmp;
 	}
 };
