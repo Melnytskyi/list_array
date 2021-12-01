@@ -108,6 +108,12 @@ public:
 		conexpr iterator(arr_block<T>* block_pos, size_t set_pos) {
 			block = block_pos;
 			pos = set_pos;
+			if (block)
+				if (block->_size == set_pos && block->next_)
+				{
+					block = block->next_;
+					pos = 0;
+				}
 		}
 		conexpr iterator& operator++() {
 			if (block) {
@@ -118,30 +124,30 @@ public:
 			}
 			return *this;
 		}
-		conexpr iterator operator++(int) const {
+		conexpr iterator operator++(int) {
 			iterator tmp = *this;
-			++const_cast<iterator&>(*this);
+			operator++();
 			return tmp;
 		}
 		conexpr iterator& operator--() {
 			if (block) {
 				if (0 == --pos) {
 					block = block->_prev;
-					pos = block->_size;
+					pos = block ? block->_size : 0;
 				}
 			}
 			return *this;
 		}
-		conexpr iterator operator--(int) const {
+		conexpr iterator operator--(int) {
 			iterator tmp = *this;
-			--const_cast<iterator&>(*this);
+			operator--();
 			return tmp;
 		}
 		conexpr bool operator==(const iterator& comparer) const {
-			return block == comparer.block && pos == comparer.pos;
+			return block == comparer.block && pos == comparer.pos && block;
 		}
 		conexpr bool operator!=(const iterator& comparer) const {
-			return !(*this == comparer) && block ? pos < block->_size : 0;
+			return (block != comparer.block || pos != comparer.pos) && block;
 		}
 		conexpr T& operator*() { return block->arr_contain[pos]; }
 		conexpr const T& operator*() const { return block->arr_contain[pos]; }
@@ -209,34 +215,34 @@ public:
 		}
 		conexpr const_iterator operator++(int) {
 			const_iterator tmp = *this;
-			++(*this);
+			operator++();
 			return tmp;
 		}
 		conexpr const_iterator& operator--() {
 			if (block) {
 				if (0 == --pos) {
 					block = block->_prev;
-					pos = block->_size;
+					pos = block ? block->_size : 0;
 				}
 			}
 			return *this;
 		}
 		conexpr const_iterator operator--(int) {
 			const_iterator tmp = *this;
-			--(*this);
+			operator--();
 			return tmp;
 		}
 		conexpr bool operator==(const const_iterator& comparer) const {
 			return block == comparer.block && pos == comparer.pos;
 		}
 		conexpr bool operator!=(const const_iterator& comparer) const {
-			return !(*this == comparer) && (block ? pos < block->_size : 0);
+			return (block != comparer.block || pos != comparer.pos) && block;
 		}
-		conexpr const T& operator*() { 
+		conexpr const T& operator*() {
 			return block->arr_contain[pos];
 		}
 		conexpr const_iterator operator->() {
-			return *this; 
+			return *this;
 		}
 	};
 	template<class T>
@@ -275,16 +281,16 @@ public:
 		}
 		conexpr reverse_iterator& operator++() {
 			if (block) {
-				if (0 == pos--) {
+				if (0 == --pos) {
 					block = block->_prev;
-					pos = block ? block->_size - 1 : 0;
+					pos = block ? block->_size : 0;
 				}
 			}
 			return *this;
 		}
 		conexpr reverse_iterator operator++(int) {
 			reverse_iterator tmp = *this;
-			++(*this);
+			operator++();
 			return tmp;
 		}
 		conexpr reverse_iterator& operator--() {
@@ -298,19 +304,17 @@ public:
 		}
 		conexpr reverse_iterator operator--(int) {
 			reverse_iterator tmp = *this;
-			--(*this);
+			operator--();
 			return tmp;
 		}
 		conexpr bool operator==(const reverse_iterator& comparer) const {
 			return block == comparer.block && pos == comparer.pos;
 		}
 		conexpr bool operator!=(const reverse_iterator& comparer) const {
-			return !(*this == comparer) && block;
+			return (block != comparer.block || pos != comparer.pos) && block;
 		}
 		conexpr T& operator*() {
-			auto tmp = *this;
-			++tmp;
-			return tmp.block->arr_contain[tmp.pos];
+			return block->arr_contain[pos - 1];
 		}
 		conexpr const T& operator*() const {
 			auto tmp = *this;
@@ -373,16 +377,16 @@ public:
 		}
 		conexpr const_reverse_iterator& operator++() {
 			if (block) {
-				if (0 == pos--) {
+				if (0 == --pos) {
 					block = block->_prev;
-					pos = block ? block->_size - 1: 0;
+					pos = block ? block->_size : 0;
 				}
 			}
 			return *this;
 		}
 		conexpr const_reverse_iterator operator++(int) {
 			const_reverse_iterator tmp = *this;
-			++(*this);
+			operator++();
 			return tmp;
 		}
 		conexpr const_reverse_iterator& operator--() {
@@ -396,19 +400,17 @@ public:
 		}
 		conexpr const_reverse_iterator operator--(int) {
 			const_reverse_iterator tmp = *this;
-			--(*this);
+			operator--();
 			return tmp;
 		}
 		conexpr bool operator==(const const_reverse_iterator& comparer) const {
 			return block == comparer.block && pos == comparer.pos;
 		}
 		conexpr bool operator!=(const const_reverse_iterator& comparer) const {
-			return !(*this == comparer) && block;
+			return (block != comparer.block || pos != comparer.pos) && block;
 		}
 		conexpr const T& operator*() const {
-			auto tmp = *this;
-			++tmp;
-			return tmp.block->arr_contain[tmp.pos];
+			return block->arr_contain[pos - 1];
 		}
 		conexpr const_reverse_iterator& operator->() { return *this; }
 	};
@@ -471,7 +473,7 @@ public:
 			return ln.get_iterator(_start);
 		}
 	};
- 	class reverse_provider {
+	class reverse_provider {
 		reverse_iterator<T> _begin;
 		reverse_iterator<T> _end;
 	public:
@@ -956,18 +958,24 @@ private:
 			return arr_end->index_back(_size - pos - 1);
 		}
 		conexpr iterator<T> get_iterator(size_t pos) {
-			return
-				(pos < (_size >> 1)) ?
-				arr->get_iterator(pos) :
-				arr_end->get_iterator_back(_size - pos - 1)
-				;
+			if (pos < (_size >> 1))
+				return arr->get_iterator(pos);
+			else {
+				if (_size - pos - 1 == size_t(-1))
+					return iterator<T>(arr_end, arr_end->_size);
+				else
+					return arr_end->get_iterator_back(_size - pos - 1);
+			}
 		}
 		conexpr const_iterator<T> get_iterator(size_t pos) const {
-			return
-				(pos < (_size >> 1)) ?
-				arr->get_iterator(pos) :
-				arr_end->get_iterator_back(_size - pos - 1)
-				;
+			if (pos < (_size >> 1))
+				return arr->get_iterator(pos);
+			else {
+				if (_size - pos - 1 == size_t(-1))
+					return iterator<T>(arr_end, arr_end->_size);
+				else
+					return arr_end->get_iterator_back(_size - pos - 1);
+			}
 		}
 		conexpr auto begin() {
 			return arr->begin();
@@ -1181,7 +1189,7 @@ private:
 			return removed;
 		}
 		template<class _Fn>
-		conexpr size_t remove_if(_Fn func,size_t start,size_t end) {
+		conexpr size_t remove_if(_Fn func, size_t start, size_t end) {
 			if (!_size)
 				return 0;
 			iterator<T> interate = get_iterator(start);
@@ -1200,13 +1208,24 @@ private:
 				removed += _remove_if(interate.block, func, 0, interate.block->_size);
 			}
 
-			if(_end.block)
+			if (_end.block)
 				removed += _remove_if(_end.block, func, 0, _end.pos);
 			else if (interate.block)
 				removed += _remove_if(interate.block, func, 0, interate.block->_size);
 
 			_size -= removed;
 			return removed;
+		}
+		conexpr void swap(dynamic_arr<T>& to_swap) {
+			arr_block<T>* old_arr = arr;
+			arr_block<T>* old_arr_end = arr_end;
+			size_t old__size = _size;
+			arr = to_swap.arr;
+			arr_end = to_swap.arr_end;
+			_size = to_swap._size;
+			to_swap.arr = old_arr;
+			to_swap.arr_end = old_arr_end;
+			to_swap._size = old__size;
 		}
 	};
 	dynamic_arr<T> arr;
@@ -1224,11 +1243,29 @@ public:
 	conexpr list_array(size_t size) {
 		resize(size);
 	}
+	conexpr list_array(size_t size, const T& default_init) {
+		resize(size, default_init);
+	}
 	conexpr list_array(list_array&& move) noexcept {
 		operator=(std::move(move));
 	}
 	conexpr list_array(const list_array& copy) noexcept {
 		operator=(copy);
+	}
+	conexpr list_array(const list_array& copy, size_t start, size_t end) noexcept {
+		if (end < start) {
+			std::swap(end, start);
+			resize(end - start);
+			auto iter = begin();
+			for (const T& it : copy.reverse_range(start, end))
+				*iter++ = it;
+		}
+		else {
+			resize(end - start);
+			auto iter = begin();
+			for (const T& it : copy.range(start, end))
+				*iter++ = it;
+		}
 	}
 	conexpr list_array& operator=(list_array&& move) noexcept {
 		arr = std::move(move.arr);
@@ -1242,6 +1279,7 @@ public:
 		reserved_begin = copy.reserved_begin;
 		_size = copy._size;
 		reserved_end = copy.reserved_end;
+		return *this;
 	}
 	conexpr size_t alocated() const {
 		return arr._size * sizeof(T);
@@ -1250,7 +1288,7 @@ public:
 		return _size;
 	}
 	template<bool do_shrink = false>
-	conexpr auto resize(size_t new_size) {
+	conexpr void resize(size_t new_size) {
 		static_assert(std::is_default_constructible<T>::value, "This type not default constructable");
 		resize<do_shrink>(new_size, T());
 	}
@@ -1273,7 +1311,7 @@ public:
 	conexpr void remove(size_t pos) {
 		if (_size == 0)return;
 		if (pos > _size)
-			throw std::out_of_range("pos value(" + std::to_string(pos) + ") out of size limit(" + std::to_string(_size) + ")");
+			throw std::out_of_range("pos value out of size limit");
 		arr.remove_item(reserved_begin + pos);
 		_size--;
 		if (_size == 0) return clear();
@@ -1282,45 +1320,18 @@ public:
 		if (start_pos > end_pos)
 			std::swap(start_pos, end_pos);
 		if (end_pos > _size)
-			throw std::out_of_range("end_pos value(" + std::to_string(end_pos) + ") out of size limit(" + std::to_string(_size) + ")");
-		if (start_pos > _size)
-			throw std::out_of_range("start_pos value(" + std::to_string(start_pos) + ") out of size limit(" + std::to_string(_size) + ")");
+			throw std::out_of_range("end_pos value out of size limit");
 		_size -= arr.remove_items(reserved_begin + start_pos, reserved_begin + end_pos);
 	}
 
-	conexpr void reserve_push_begin(size_t reserve_size) {
+	conexpr void reserve_push_front(size_t reserve_size) {
 		reserved_begin += reserve_size;
 		arr.resize_begin(reserved_begin + _size + reserved_end);
 	}
-	conexpr void push_begin(const T& copyer) {
-		if (reserved_begin) {
-			arr[--reserved_begin] = copyer;
-			_size++;
-		}
-		else {
-			reserve_push_begin(_size + 1);
-			push_begin(copyer);
-		}
-	}
-	conexpr void push_begin(T&& copyer) {
-		if (reserved_begin) {
-			arr[--reserved_begin] = copyer;
-			_size++;
-		}
-		else {
-			reserve_push_begin(_size + 1);
-			push_begin(std::move(copyer));
-		}
-	}
-
-	conexpr void reserve_push_front(size_t reserve_size) {
-		reserved_end += reserve_size;
-		arr.resize_front(reserved_begin + _size + reserved_end);
-	}
 	conexpr void push_front(const T& copyer) {
-		if (reserved_end) {
-			arr[reserved_begin + _size++] = copyer;
-			--reserved_end;
+		if (reserved_begin) {
+			arr[--reserved_begin] = copyer;
+			_size++;
 		}
 		else {
 			reserve_push_front(_size + 1);
@@ -1328,9 +1339,9 @@ public:
 		}
 	}
 	conexpr void push_front(T&& copyer) {
-		if (reserved_end) {
-			arr[reserved_begin + _size++] = std::move(copyer);
-			--reserved_end;
+		if (reserved_begin) {
+			arr[--reserved_begin] = copyer;
+			_size++;
 		}
 		else {
 			reserve_push_front(_size + 1);
@@ -1338,13 +1349,38 @@ public:
 		}
 	}
 
-	conexpr void pop_front() {
+	conexpr void reserve_push_begin(size_t reserve_size) {
+		reserved_end += reserve_size;
+		arr.resize_front(reserved_begin + _size + reserved_end);
+	}
+	conexpr void push_begin(const T& copyer) {
+		if (reserved_end) {
+			arr[reserved_begin + _size++] = copyer;
+			--reserved_end;
+		}
+		else {
+			reserve_push_begin(_size + 1);
+			push_begin(copyer);
+		}
+	}
+	conexpr void push_begin(T&& copyer) {
+		if (reserved_end) {
+			arr[reserved_begin + _size++] = std::move(copyer);
+			--reserved_end;
+		}
+		else {
+			reserve_push_begin(_size + 1);
+			push_begin(std::move(copyer));
+		}
+	}
+
+	conexpr void pop_begin() {
 		if (_size)
 			remove(_size - 1);
 		else
 			throw std::out_of_range("no items for remove");
 	}
-	conexpr void pop_begin() {
+	conexpr void pop_front() {
 		if (_size)
 			remove(0);
 		else
@@ -1367,27 +1403,27 @@ public:
 	}
 	conexpr void insert(size_t pos, const T& item) {
 		if (pos == _size)
-			return push_front(item);
+			return push_begin(item);
 		arr.insert(reserved_begin + pos, item);
 		_size++;
 	}
 	conexpr void insert(size_t pos, T&& item) {
 		if (pos == _size)
-			return push_front(std::move(item));
+			return push_begin(std::move(item));
 		arr.insert(reserved_begin + pos, std::move(item));
 		_size++;
 	}
 
-	conexpr void push_begin(T* array, size_t arr_size) {
+	conexpr void push_front(T* array, size_t arr_size) {
 		insert(0, array, arr_size);
 	}
-	conexpr void push_front(T* array, size_t arr_size) {
+	conexpr void push_begin(T* array, size_t arr_size) {
 		insert(_size, array, arr_size);
 	}
-	conexpr void push_begin(const list_array<T>& to_push) {
+	conexpr void push_front(const list_array<T>& to_push) {
 		insert(0, to_push);
 	}
-	conexpr void push_front(const list_array<T>& to_push) {
+	conexpr void push_begin(const list_array<T>& to_push) {
 		insert(_size, to_push);
 	}
 
@@ -1475,7 +1511,7 @@ public:
 		return false;
 	}
 	conexpr bool contains(const T& value, size_t start, size_t end) const req(std::equality_comparable<T>) {
-		for (const T& it : range(start,end))
+		for (const T& it : range(start, end))
 			if (it == value)
 				return true;
 		return false;
@@ -1540,7 +1576,7 @@ public:
 	conexpr void foreach(_Fn interate_function, size_t start, size_t end) {
 		using res_t = decltype(std::function{ interate_function })::result_type;
 		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
-			for (auto& it : range(start,end))
+			for (auto& it : range(start, end))
 				if (interate_function(it))
 					break;
 		}
@@ -1570,7 +1606,7 @@ public:
 					break;
 		}
 		else
-			for (auto& it : reverse())
+			for (T& it : reverse())
 				interate_function(it);
 	}
 	template<class _Fn>
@@ -1621,9 +1657,9 @@ public:
 		if (start > end)
 			std::swap(start, end);
 		if (end > _size)
-			throw std::out_of_range("end value(" + std::to_string(end) + ") out of size limit("+std::to_string(_size)+")");
+			throw std::out_of_range("end value out of size limit");
 		if (start > _size)
-			throw std::out_of_range("start value(" + std::to_string(start) + ") out of size limit(" + std::to_string(_size) + ")");
+			throw std::out_of_range("start value out of size limit");
 		size_t res = arr.remove_if(check_function, reserved_begin + start, reserved_begin + end);
 		_size -= res;
 		return res;
@@ -1678,16 +1714,16 @@ public:
 		}
 		return npos;
 	}
-	conexpr size_t find(const T& value,size_t continue_from) const req(std::equality_comparable<T>) {
+	conexpr size_t find(const T& value, size_t continue_from) const req(std::equality_comparable<T>) {
 		size_t i = 0;
-		for (auto& it : range(continue_from,_size)) {
+		for (auto& it : range(continue_from, _size)) {
 			if (it == value)
 				return i;
 			++i;
 		}
 		return npos;
 	}
-	conexpr size_t find(const T* vbeg,const T* vend) const req(std::equality_comparable<T>) {
+	conexpr size_t find(const T* vbeg, const T* vend) const req(std::equality_comparable<T>) {
 		size_t i = 0;
 		size_t eq = 0;
 		size_t dif = vend - vbeg;
@@ -1846,7 +1882,7 @@ public:
 		return npos;
 	}
 	template<class _Fn>
-	conexpr size_t find_it(_Fn find_func,size_t continue_from) const {
+	conexpr size_t find_it(_Fn find_func, size_t continue_from) const {
 		size_t i = 0;
 		for (auto& it : range(continue_from, _size)) {
 			if (find_func(it))
@@ -1880,6 +1916,188 @@ public:
 	conexpr void clear() {
 		arr.clear();
 		_size = reserved_end = reserved_begin = 0;
+	}
+
+	conexpr list_array<T> sort_copy() const {
+		return list_array<T>(*this).sort();
+	}
+	conexpr list_array<T>& sort() {
+		if constexpr (std::is_unsigned<T>::value) {
+			const T& mival = min();
+			size_t dif = max() - mival + 1;
+			list_array<size_t> count_arr(dif);
+			list_array<T> result(_size);
+			{
+				size_t i = 0;
+				for (const T& it : *this)
+					count_arr[it - mival] += 1;
+			}
+			for (size_t i = 1; i < dif; i++)
+				count_arr[i] += count_arr[i - 1];
+			{
+				for (const T& it : reverse()) {
+					result[count_arr[it - mival] - 1] = it;
+					count_arr[it - mival] -= 1;
+				}
+			}
+			swap(result);
+		}
+		else if constexpr (std::is_signed<T>::value && !sizeof(T) < sizeof(size_t)) {
+			auto normalize = [](const T& to) {
+				constexpr size_t to_shift = sizeof(8) * 4;
+				return size_t((SIZE_MAX >> to_shift) + to);
+			};
+			size_t mival = normalize(min());
+			size_t dif = normalize(max()) - mival + 1;
+			list_array<size_t> count_arr(dif, 0);
+			list_array<T> result(_size);
+			{
+				size_t i = 0;
+				for (const T& it : *this)
+					count_arr[normalize(it) - mival] += 1;
+			}
+			for (size_t i = 1; i < dif; i++)
+				count_arr[i] += count_arr[i - 1];
+			{
+				for (const T& it : reverse()) {
+					result[count_arr[normalize(it) - mival] - 1] = it;
+					count_arr[normalize(it) - mival] -= 1;
+				}
+			}
+			swap(result);
+		}
+		else {
+			size_t curr_L_size = _size / 2 + 1;
+			size_t curr_M_size = _size / 2 + 1;
+			T* L = new T[_size / 2 + 1];
+			T* M = new T[_size / 2 + 1];
+			auto fix_size = [&L, &M, &curr_L_size, &curr_M_size](size_t start, size_t mindle, size_t end) {
+				size_t l = mindle - start + 1;
+				size_t m = end - mindle + 1;
+				if (curr_L_size < l) {
+					delete[] L;
+					L = new T[l];
+					curr_L_size = l;
+				}
+				if (curr_M_size < m) {
+					delete[] M;
+					M = new T[m];
+					curr_M_size = m;
+				}
+			};
+			auto merge = [&](size_t start, size_t mindle, size_t end) {
+				size_t n1 = mindle - start;
+				size_t n2 = end - mindle;
+				if (curr_L_size < n1 || curr_M_size < n2)
+					fix_size(start, mindle, end);
+				get_iterator(start)._fast_load(L, n1);
+				get_iterator(mindle)._fast_load(M, n2);
+				size_t i = 0, j = 0, k = start;
+				for (T& it : range(start, end)) {
+					if (i < n1 && j < n2)
+						it = L[i] <= M[j] ? L[i++] : M[j++];
+					else if (i < n1)
+						it = L[i++];
+					else if (j < n2)
+						it = M[j++];
+				}
+			};
+			for (size_t b = 2; b < _size; b <<= 1) {
+				for (size_t i = 0; i < _size; i += b) {
+					if (i + b > _size)
+						merge(i, i + ((_size - i) >> 1), _size);
+					else
+						merge(i, i + (b >> 1), i + b);
+				}
+				if (b << 1 > _size)
+					merge(0, b, _size);
+			}
+			auto non_sorted_finder = [&](size_t continue_search) {
+				const auto* check = &operator[](0);
+				size_t res = 0;
+				for (const T& it : *this) {
+					if (*check > it)
+						return res;
+					check = &it;
+					++res;
+				}
+				return size_t(0);
+			};
+			size_t err = 0;
+			while (err = non_sorted_finder(err))
+				merge(0, err, _size);
+			delete[] L;
+			delete[] M;
+		}
+		return *this;
+	}
+
+	conexpr const T& max() const {
+		if (!_size)
+			throw std::length_error("This list_array size is zero");
+		const T* max = &operator[](0);
+		for (const T& it : *this)
+			if (*max < it)
+				max = &it;
+		return *max;
+	}
+	conexpr const T& min() const {
+		if (!_size)
+			throw std::length_error("This list_array size is zero");
+		const T* min = &operator[](0);
+		for (const T& it : *this)
+			if (*min > it)
+				min = &it;
+		return *min;
+	}
+	conexpr T max_default() const req(std::copy_constructible<T>) {
+		if (!_size)
+			return T();
+		const T* max = &operator[](0);
+		for (const T& it : *this)
+			if (*max < it)
+				max = &it;
+		return *max;
+	}
+	conexpr T min_default() const req(std::copy_constructible<T>) {
+		if (!_size)
+			return T();
+		const T* min = &operator[](0);
+		for (const T& it : *this)
+			if (*min > it)
+				min = &it;
+		return *min;
+	}
+
+	conexpr void swap(list_array<T>& to_swap) {
+		if (arr.arr != to_swap.arr.arr) {
+			arr.swap(to_swap.arr);
+			size_t rb = reserved_begin;
+			size_t re = reserved_end;
+			size_t s = _size;
+			reserved_begin = to_swap.reserved_begin;
+			_size = to_swap._size;
+			reserved_end = to_swap.reserved_end;
+			to_swap.reserved_begin = rb;
+			to_swap.reserved_end = re;
+			to_swap._size = s;
+		}
+	}
+	conexpr bool operator==(const list_array<T>& to_cmp) const {
+		if (arr.arr != to_cmp.arr.arr) {
+			if (_size != to_cmp._size)
+				return false;
+			auto iter = to_cmp.begin();
+			for (const T& it : *this) {
+				if (*iter != it)
+					return false;
+				++iter;
+			}
+		}
+		return true;
+	}
+	conexpr bool operator!=(const list_array<T>& to_cmp) const {
+		return !operator==(to_cmp);
 	}
 
 	conexpr iterator<T> get_iterator(size_t pos) {
