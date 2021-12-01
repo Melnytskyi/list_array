@@ -12,7 +12,7 @@ void speed_test() {
 
 		std::cout << "Push only time: ";
 		curr = std::chrono::high_resolution_clock::now();
-		for (uint32_t i = 0; i < 1000000000; i++)test.push_front(i);
+		for (uint32_t i = 0; i < 1000000000; i++)test.push_begin(i);
 		std::cout << std::chrono::high_resolution_clock::now() - curr << std::endl;
 
 		std::cout << "Commit to one block time: ";
@@ -25,17 +25,23 @@ void speed_test() {
 		for (uint32_t i = 0; i < 1000000000; i++) 
 			a += test[i];
 		std::cout << std::chrono::high_resolution_clock::now() - curr << ", elems sum: " << a << std::endl;
-
-		std::cout << "Remove speed: ";
-		test.remove(test.size() - 100, test.size());
 		std::cout << "Foreach 1000000000 elems time: ";
 		curr = std::chrono::high_resolution_clock::now();
 		a = 0;
 		test.foreach([&a](uint32_t& it) { a += it; });
 		std::cout << std::chrono::high_resolution_clock::now() - curr << ", elems sum: " << a << std::endl;
+		std::cout << "Forreach 1000000000 elems time: ";
+		curr = std::chrono::high_resolution_clock::now();
+		a = 0;
+		test.forreach([&a](uint32_t& it) { a += it; });
+		std::cout << std::chrono::high_resolution_clock::now() - curr << ", elems sum: " << a << std::endl;
+
+		std::cout << "Remove speed: ";
+		curr = std::chrono::high_resolution_clock::now();
+		test.remove(test.size() - 100, test.size());
+		std::cout << std::chrono::high_resolution_clock::now() - curr << std::endl;
 
 		std::cout << "Remove if (half array): " << test.size() << "   ";
-
 		curr = std::chrono::high_resolution_clock::now();
 		test.remove_if([](auto& it) { return (bool)(it & 1); });
 		std::cout << std::chrono::high_resolution_clock::now() - curr << test.size() << std::endl << std::endl;
@@ -100,7 +106,7 @@ void insert_ourselt_mindle() {
 
 void commit() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
 	test.commit();
 	for (uint32_t i = 0; i < 1000; i++) {
 		if (test[i] != i)
@@ -112,7 +118,7 @@ void commit() {
 }
 void decommit() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
 	test.decommit(4);
 	for (uint32_t i = 0; i < 1000; i++) {
 		if (test[i] != i)
@@ -127,7 +133,7 @@ void decommit() {
 
 void remove_item() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
 	test.remove(500);
 	for (uint32_t i = 0; i < 999; i++) {
 		if (test[i] != i + (i >= 500))
@@ -138,7 +144,7 @@ void remove_item() {
 }
 void remove_items() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
 	test.remove(400,600);
 	for (uint32_t i = 0; i < 800; i++) {
 		if (test[i] != i + (i >= 400 ? 200 : 0))
@@ -150,13 +156,20 @@ void remove_items() {
 
 void foreach_test() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
 	uint64_t res_0 = 0;
 	uint64_t res_1 = 0;
 	uint64_t res_2 = 0;
 	uint64_t res_3 = 0;
+
+
 	test.foreach([&res_0](uint32_t& it) { res_0 += it; });
-	test.forreach([&res_1](uint32_t& it) { res_1 += it; });
+
+	uint64_t tt = 1000;
+	test.forreach([&res_1,&tt](uint32_t& it) {
+		assert(it == --tt);
+		res_1 += it;
+	});
 
 	for (uint32_t& it : test)
 		res_2 += it;
@@ -169,7 +182,7 @@ void foreach_test() {
 }
 void reverse_foreach_test() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
 	uint32_t for_test = 900;
 	for (uint32_t& it : test.reverse_range(0,900)) {
 		if (it != --for_test)
@@ -181,7 +194,7 @@ void reverse_foreach_test() {
 
 void flip() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
 	auto copy = test.flip_copy();
 	uint32_t copy_test = 1000;
 	copy.foreach([&copy_test](uint32_t it) { 
@@ -191,7 +204,7 @@ void flip() {
 }
 constexpr bool constexpr_flip() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
 	auto copy = test.flip_copy();
 	uint32_t copy_test = 1000;
 	bool result = true;
@@ -208,31 +221,54 @@ constexpr bool constexpr_flip() {
 
 void forreach() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
 	auto copy = test.flip_copy();
 	size_t i = 0;
 
 	copy.forreach([&test,&i](uint32_t it) {
-		assert(it != test[i++]  && "For revese each test failed cause missmatch");
+		assert(it == test[i++]  && "For revese each test failed cause missmatch");
 	});
 	std::cout << "For reverse each test: passed" << std::endl;
 }
 
 void forreach_range() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_front(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
 	auto copy = test.flip_copy();
-	size_t i = 100;
+	size_t i = 700;
 
 	copy.forreach(
 		[&test, &i](uint32_t it) {
-			assert(it != test[i++] && "For revese each range test failed cause missmatch");
+			assert(it == test[i++] && "For revese each range test failed cause missmatch");
 		},
 		100,
 		300
 	);
 	std::cout << "For reverse each range test: passed" << std::endl;
 }
+
+
+void sort_test() {
+	list_array<uint32_t> test(10000);
+	for (uint32_t& it : test)
+		it = rand();
+	test.sort();
+
+	size_t i = 0;
+	uint32_t cmp = 0;
+	test.foreach(
+		[&test, &i,&cmp](uint32_t it) {
+			if(cmp >it)
+				assert(false && "Sort test failed cause missmatch");
+			else 
+				cmp = it;
+			++i;
+		}
+	);
+ 	std::cout << "Sort test: passed" << std::endl;
+}
+
+
 
 
 void main() {
@@ -254,9 +290,7 @@ void main() {
 	std::cout << "constexpr flip test result:" << constexpr_flip() << std::endl;
 	forreach();
 	forreach_range();
-
-
-
+	sort_test();
 	std::cout << "list array tests: passed" << std::endl;
 	speed_test();
 }
