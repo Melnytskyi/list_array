@@ -282,6 +282,27 @@ void split() {
 	std::cout << "Split test: passed" << std::endl;
 }
 
+void unique() {
+	list_array<int> test = { 1, 2, 2, 3, 3, 2, 1, 1, 2 };
+	test.unique();
+	list_array<int> check{ 1, 2, 3, 2, 1, 2 };
+	assert(test == check);
+	std::cout << "Unique test: passed" << std::endl;
+}
+void unify() {
+	list_array<int> test = { 1, 2, 2, 3, 3, 2, 1, 1, 2 };
+	test.unify();
+	list_array<int> check{ 1, 2, 3 };
+	assert(test == check);
+	std::cout << "Unify test: passed" << std::endl;
+}
+void alone() {
+	list_array<int> test = { 1, 2, 2, 3, 3, 2, 1, 1, 2,5 };
+	test.alone();
+	list_array<int> check{ 5 };
+	assert(test == check);
+	std::cout << "Alone test: passed" << std::endl;
+}
 
 void main() {
 	index();
@@ -304,6 +325,10 @@ void main() {
 	forreach_range();
 	sort_test();
 	split();
+
+	unique();
+	unify();
+	alone();
 
 	std::cout << "list array tests: passed" << std::endl;
 	speed_test();
