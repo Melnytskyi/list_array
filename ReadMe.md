@@ -1,15 +1,19 @@
 # list_array
 
-The simple one header implementation heigh effectivelly array for universal cases in one header file
+The simple one header implementation heigh effectivelly array and easy usage functions for all popoular cases in one header file
+
+this implementation use c++20 but has compatibility with c++17
 
 # How it work
 
-list_array class create array blocks and store in list structure which allow push elements at begin same speed as last block array O(n) in bad case, and index lower speed than default list with same elements count
+list_array class create array blocks and store all blocks in two way list structure which allow push elements anywhere faster than std::vector, and indexing elements faster than std::list
 
-removing and inserting items in random place split array block and if array block is small just modify it without spliting 
+# Performace
+indexing speed is half blocks count cause this implementation use two way list
 
-# Usage
-For bether performace i recomend do not combine pushing and indexing operations in same place
-and call <code>commit()</code> for combine all blocks in one and <code>decomit(size_t blocks_count)</code> for optimize inserting and pushing (not recomend set heigh value)
+inserting item speed is equal as block size which is inserting<br/>
+if modifying block contains more than 50000 elements it will splited
 
-by default performace this two operations balancing in O(1) and O(N) range
+removing speed is same speed as inserting and same behavior
+
+for manage blocks count you can use <code>commit()</code> for combine all blocks to one or <code>decommit(block count)</code> for your desired quantity
