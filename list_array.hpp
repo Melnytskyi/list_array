@@ -1249,23 +1249,11 @@ public:
 	conexpr list_array(list_array&& move) noexcept {
 		operator=(std::move(move));
 	}
-	conexpr list_array(const list_array& copy) noexcept {
+	conexpr list_array(const list_array& copy) {
 		operator=(copy);
 	}
-	conexpr list_array(const list_array& copy, size_t start, size_t end) noexcept {
-		if (end < start) {
-			std::swap(end, start);
-			resize(end - start);
-			auto iter = begin();
-			for (const T& it : copy.reverse_range(start, end))
-				*iter++ = it;
-		}
-		else {
-			resize(end - start);
-			auto iter = begin();
-			for (const T& it : copy.range(start, end))
-				*iter++ = it;
-		}
+	conexpr list_array(const list_array& copy, size_t start, size_t end) {
+		operator=(copy.copy(start, end));
 	}
 	conexpr list_array& operator=(list_array&& move) noexcept {
 		arr = std::move(move.arr);
@@ -1309,8 +1297,7 @@ public:
 	}
 
 	conexpr void remove(size_t pos) {
-		if (_size == 0)return;
-		if (pos > _size)
+		if (pos >= _size)
 			throw std::out_of_range("pos value out of size limit");
 		arr.remove_item(reserved_begin + pos);
 		_size--;
@@ -1375,16 +1362,10 @@ public:
 	}
 
 	conexpr void pop_back() {
-		if (_size)
-			remove(_size - 1);
-		else
-			throw std::out_of_range("no items for remove");
+		remove(_size - 1);
 	}
 	conexpr void pop_front() {
-		if (_size)
-			remove(0);
-		else
-			throw std::out_of_range("no items for remove");
+		remove(0);
 	}
 
 	conexpr T& back() {
@@ -1519,10 +1500,7 @@ public:
 
 
 	conexpr bool contains(const T& value) const req(std::equality_comparable<T>) {
-		for (const T& it : *this)
-			if (it == value)
-				return true;
-		return false;
+		return contains(value, 0, _size);
 	}
 	conexpr bool contains(const T& value, size_t start, size_t end) const req(std::equality_comparable<T>) {
 		for (const T& it : range(start, end))
@@ -1531,20 +1509,40 @@ public:
 		return false;
 	}
 
+	conexpr bool contains(const list_array<T>& value) const req(std::equality_comparable<T>) {
+		return contains(value, 0, value._size, 0, _size);
+	}	
+	conexpr bool contains(const list_array<T>& value, size_t start, size_t end) const req(std::equality_comparable<T>) {
+		return contains(value, 0, value._size, start, end);
+	}
+	conexpr bool contains(const list_array<T>& value, size_t value_start, size_t value_end, size_t start, size_t end) const req(std::equality_comparable<T>) {
+		if (value_end > value._size)
+			throw std::out_of_range("value_end is out of value size limit");
+		auto vbeg = value.get_iterator(value_start);
+		auto ibeg = vbeg;
+		size_t i = value_start;
+		for (const T& it : range(start, end)) {
+			if (it == *ibeg) {
+				++i;
+				if (i == value_end)
+					return true;
+				++ibeg;
+			}
+			else {
+				i = value_start;
+				ibeg = vbeg;
+			}
+		}
+		return false;
+	}
+
 	template<class _Fn>
 	conexpr bool contains_one(_Fn check_functon) const {
-		for (const T& it : *this)
-			if (compare_functon(it))
-				return true;
-		return false;
+		return contains_one(check_functon,0,_size);
 	}
 	template<class _Fn>
 	conexpr size_t contains_multiply(_Fn check_functon) const {
-		size_t i = 0;
-		for (const T& it : *this)
-			if (compare_functon(it))
-				++i;
-		return i;
+		return contains_multiply(check_functon, 0, _size);
 	}
 	template<class _Fn>
 	conexpr bool contains_one(_Fn check_functon, size_t start, size_t end) const {
@@ -1720,13 +1718,7 @@ public:
 	}
 
 	conexpr size_t find(const T& value) const req(std::equality_comparable<T>) {
-		size_t i = 0;
-		for (auto& it : *this) {
-			if (it == value)
-				return i;
-			++i;
-		}
-		return npos;
+		return find(value, 0);
 	}
 	conexpr size_t find(const T& value, size_t continue_from) const req(std::equality_comparable<T>) {
 		size_t i = 0;
@@ -1738,36 +1730,7 @@ public:
 		return npos;
 	}
 	conexpr size_t find(const T* vbeg, const T* vend) const req(std::equality_comparable<T>) {
-		size_t i = 0;
-		size_t eq = 0;
-		size_t dif = vend - vbeg;
-
-		for (auto& it : *this) {
-			if (vbeg[eq] == it)
-				++eq;
-			else
-				eq = 0;
-			if (eq == dif)
-				return i;
-			++i;
-		}
-		return npos;
-	}
-	conexpr size_t find(const list_array<T>& value) const req(std::equality_comparable<T>) {
-		size_t i = 0;
-		size_t eq = 0;
-		size_t dif = value.size();
-
-		for (auto& it : *this) {
-			if (value[eq] == it)
-				++eq;
-			else
-				eq = 0;
-			if (eq == dif)
-				return i;
-			++i;
-		}
-		return npos;
+		return find(vbeg, vend, 0);
 	}
 	conexpr size_t find(const T* vbeg, const T* vend, size_t continue_from) const req(std::equality_comparable<T>) {
 		size_t i = 0;
@@ -1785,31 +1748,37 @@ public:
 		}
 		return npos;
 	}
+	conexpr size_t find(const list_array<T>& value) const req(std::equality_comparable<T>) {
+		return find(value, 0, value._size, 0, _size);
+	}
 	conexpr size_t find(const list_array<T>& value, size_t continue_from) const req(std::equality_comparable<T>) {
-		size_t i = 0;
-		size_t eq = 0;
-		size_t dif = value.size();
-
-		for (auto& it : range(continue_from, _size)) {
-			if (value[eq] == it)
-				++eq;
-			else
-				eq = 0;
-			if (eq == dif)
-				return i;
-			++i;
+		return find(value, 0, value._size, continue_from, _size);
+	}
+	conexpr size_t find(const list_array<T>& value, size_t value_start, size_t value_end, size_t continue_from, size_t end) const req(std::equality_comparable<T>) {
+		if (value_end > value._size)
+			throw std::out_of_range("value_end is out of value size limit");
+		auto vbeg = value.get_iterator(value_start);
+		auto ibeg = vbeg;
+		size_t i = value_start;
+		size_t res = start;
+		for (const T& it : range(continue_from, end)) {
+			if (it == *ibeg) {
+				++i;
+				if (i == value_end)
+					return res;
+				++ibeg;
+			}
+			else {
+				i = value_start;
+				ibeg = vbeg;
+			}
+			++res;
 		}
 		return npos;
 	}
 
 	conexpr size_t findr(const T& value) const req(std::equality_comparable<T>) {
-		size_t i = 0;
-		for (auto& it : reverse()) {
-			if (it == value)
-				return i;
-			++i;
-		}
-		return npos;
+		return findr(value,_size);
 	}
 	conexpr size_t findr(const T& value, size_t continue_from) const req(std::equality_comparable<T>) {
 		size_t i = 0;
@@ -1821,36 +1790,7 @@ public:
 		return npos;
 	}
 	conexpr size_t findr(const T* vbeg, const T* vend) const req(std::equality_comparable<T>) {
-		size_t i = 0;
-		size_t eq = 0;
-		size_t dif = vend - vbeg;
-
-		for (auto& it : reverse()) {
-			if (vbeg[eq] == it)
-				++eq;
-			else
-				eq = 0;
-			if (eq == dif)
-				return i;
-			++i;
-		}
-		return npos;
-	}
-	conexpr size_t findr(const list_array<T>& value) const req(std::equality_comparable<T>) {
-		size_t i = 0;
-		size_t eq = 0;
-		size_t dif = value.size();
-
-		for (auto& it : reverse()) {
-			if (value[eq] == it)
-				++eq;
-			else
-				eq = 0;
-			if (eq == dif)
-				return i;
-			++i;
-		}
-		return npos;
+		return findr(vbeg, vend, _size);
 	}
 	conexpr size_t findr(const T* vbeg, const T* vend, size_t continue_from) const req(std::equality_comparable<T>) {
 		size_t i = 0;
@@ -1868,32 +1808,38 @@ public:
 		}
 		return npos;
 	}
+	conexpr size_t findr(const list_array<T>& value) const req(std::equality_comparable<T>) {
+		return findr(value, 0, value._size, 0, _size);
+	}
 	conexpr size_t findr(const list_array<T>& value, size_t continue_from) const req(std::equality_comparable<T>) {
-		size_t i = 0;
-		size_t eq = 0;
-		size_t dif = value.size();
-
-		for (auto& it : reverse_range(0, continue_from)) {
-			if (value[eq] == it)
-				++eq;
-			else
-				eq = 0;
-			if (eq == dif)
-				return i;
-			++i;
+		return findr(value, 0, value._size, continue_from, _size);
+	}
+	conexpr size_t findr(const list_array<T>& value, size_t value_start, size_t value_end, size_t continue_from, size_t end) const req(std::equality_comparable<T>) {
+		if (value_end > value._size)
+			throw std::out_of_range("value_end is out of value size limit");
+		auto vbeg = value.get_iterator(value_start);
+		auto ibeg = vbeg;
+		size_t i = value_start;
+		size_t res = continue_from;
+		for (const T& it : reverse_range(end, continue_from)) {
+			if (it == *ibeg) {
+				++i;
+				if (i == value_end)
+					return res;
+				++ibeg;
+			}
+			else {
+				i = value_start;
+				ibeg = vbeg;
+			}
+			++res;
 		}
 		return npos;
 	}
 
 	template<class _Fn>
 	conexpr size_t find_it(_Fn find_func) const {
-		size_t i = 0;
-		for (auto& it : *this) {
-			if (find_func(it))
-				return i;
-			++i;
-		}
-		return npos;
+		return find_it(find_func, 0);
 	}
 	template<class _Fn>
 	conexpr size_t find_it(_Fn find_func, size_t continue_from) const {
@@ -1908,13 +1854,7 @@ public:
 
 	template<class _Fn>
 	conexpr size_t findr_it(_Fn find_func) const {
-		size_t i = 0;
-		for (T& it : reverse()) {
-			if (find_func(it))
-				return i;
-			++i;
-		}
-		return npos;
+		return findr_it(find_func, _size);
 	}
 	template<class _Fn>
 	conexpr size_t findr_it(_Fn find_func, size_t continue_from) const {
@@ -2151,6 +2091,28 @@ public:
 			for (auto& it : range(start_pos, end_pos))
 				res[i++] = std::move(it);
 			remove(start_pos, end_pos);
+			return res;
+		}
+	}
+
+	conexpr list_array<T> copy(size_t start_pos, size_t end_pos) {
+		if (start_pos > end_pos) {
+			std::swap(start_pos, end_pos);
+			if (_size < end_pos)
+				throw std::out_of_range("Fail take items due small array");
+			list_array<T> res(end_pos - start_pos);
+			size_t i = 0;
+			for (auto& it : reverse_range(start_pos, end_pos))
+				res[i++] = it;
+			return res;
+		}
+		else {
+			if (_size < end_pos)
+				throw std::out_of_range("Fail take items due small array");
+			list_array<T> res(end_pos - start_pos);
+			size_t i = 0;
+			for (auto& it : range(start_pos, end_pos))
+				res[i++] = it;
 			return res;
 		}
 	}
