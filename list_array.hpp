@@ -1216,7 +1216,7 @@ private:
 			_size -= removed;
 			return removed;
 		}
-		conexpr void swap(dynamic_arr<T>& to_swap) {
+		conexpr void swap(dynamic_arr<T>& to_swap) noexcept {
 			arr_block<T>* old_arr = arr;
 			arr_block<T>* old_arr_end = arr_end;
 			size_t old__size = _size;
@@ -1349,32 +1349,32 @@ public:
 		}
 	}
 
-	conexpr void reserve_push_begin(size_t reserve_size) {
+	conexpr void reserve_push_back(size_t reserve_size) {
 		reserved_end += reserve_size;
 		arr.resize_front(reserved_begin + _size + reserved_end);
 	}
-	conexpr void push_begin(const T& copyer) {
+	conexpr void push_back(const T& copyer) {
 		if (reserved_end) {
 			arr[reserved_begin + _size++] = copyer;
 			--reserved_end;
 		}
 		else {
-			reserve_push_begin(_size + 1);
-			push_begin(copyer);
+			reserve_push_back(_size + 1);
+			push_back(copyer);
 		}
 	}
-	conexpr void push_begin(T&& copyer) {
+	conexpr void push_back(T&& copyer) {
 		if (reserved_end) {
 			arr[reserved_begin + _size++] = std::move(copyer);
 			--reserved_end;
 		}
 		else {
-			reserve_push_begin(_size + 1);
-			push_begin(std::move(copyer));
+			reserve_push_back(_size + 1);
+			push_back(std::move(copyer));
 		}
 	}
 
-	conexpr void pop_begin() {
+	conexpr void pop_back() {
 		if (_size)
 			remove(_size - 1);
 		else
@@ -1386,6 +1386,20 @@ public:
 		else
 			throw std::out_of_range("no items for remove");
 	}
+
+	conexpr T& back() {
+		return operator[](0);
+	}
+	conexpr T& front() {
+		return operator[](_size-1);
+	}
+	conexpr const T& back() const {
+		return operator[](0);
+	}
+	conexpr const T& front() const {
+		return operator[](_size - 1);
+	}
+
 
 	conexpr void insert(size_t pos, const T* item, size_t arr_size) {
 		if (!arr_size)
@@ -1403,13 +1417,13 @@ public:
 	}
 	conexpr void insert(size_t pos, const T& item) {
 		if (pos == _size)
-			return push_begin(item);
+			return push_back(item);
 		arr.insert(reserved_begin + pos, item);
 		_size++;
 	}
 	conexpr void insert(size_t pos, T&& item) {
 		if (pos == _size)
-			return push_begin(std::move(item));
+			return push_back(std::move(item));
 		arr.insert(reserved_begin + pos, std::move(item));
 		_size++;
 	}
@@ -1417,13 +1431,13 @@ public:
 	conexpr void push_front(T* array, size_t arr_size) {
 		insert(0, array, arr_size);
 	}
-	conexpr void push_begin(T* array, size_t arr_size) {
+	conexpr void push_back(T* array, size_t arr_size) {
 		insert(_size, array, arr_size);
 	}
 	conexpr void push_front(const list_array<T>& to_push) {
 		insert(0, to_push);
 	}
-	conexpr void push_begin(const list_array<T>& to_push) {
+	conexpr void push_back(const list_array<T>& to_push) {
 		insert(_size, to_push);
 	}
 
@@ -2069,7 +2083,7 @@ public:
 		return *min;
 	}
 
-	conexpr void swap(list_array<T>& to_swap) {
+	conexpr void swap(list_array<T>& to_swap) noexcept {
 		if (arr.arr != to_swap.arr.arr) {
 			arr.swap(to_swap.arr);
 			size_t rb = reserved_begin;
@@ -2099,6 +2113,48 @@ public:
 	conexpr bool operator!=(const list_array<T>& to_cmp) const {
 		return !operator==(to_cmp);
 	}
+
+	conexpr list_array<T> split(size_t split_pos) {
+		if (_size <= split_pos)
+			throw std::out_of_range("Fail split due small array or split_pos is equal with array size");
+		list_array<T> res(_size - split_pos);
+		size_t i = 0;
+		for (auto& it : range(split_pos,_size))
+			res[i++] = std::move(it);
+		remove(split_pos, _size);
+		return res;
+	}
+	conexpr T take(size_t take_pos) {
+		if (_size <= take_pos)
+			throw std::out_of_range("Fail take item due small array");		
+		T res(std::move(operator[](take_pos)));
+		remove(take_pos);
+		return res;
+	}
+	conexpr list_array<T> take(size_t start_pos,size_t end_pos) {
+		if (start_pos > end_pos) {
+			std::swap(start_pos, end_pos);
+			if (_size < end_pos)
+				throw std::out_of_range("Fail take items due small array");
+			list_array<T> res(end_pos - start_pos);
+			size_t i = 0;
+			for (auto& it : reverse_range(start_pos, end_pos))
+				res[i++] = std::move(it);
+			remove(start_pos, end_pos);
+			return res;
+		}
+		else {
+			if (_size < end_pos)
+				throw std::out_of_range("Fail take items due small array");
+			list_array<T> res(end_pos - start_pos);
+			size_t i = 0;
+			for (auto& it : range(start_pos, end_pos))
+				res[i++] = std::move(it);
+			remove(start_pos, end_pos);
+			return res;
+		}
+	}
+
 
 	conexpr iterator<T> get_iterator(size_t pos) {
 		return arr.get_iterator(reserved_begin + pos);

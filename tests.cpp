@@ -12,7 +12,7 @@ void speed_test() {
 
 		std::cout << "Push only time: ";
 		curr = std::chrono::high_resolution_clock::now();
-		for (uint32_t i = 0; i < 1000000000; i++)test.push_begin(i);
+		for (uint32_t i = 0; i < 1000000000; i++)test.push_back(i);
 		std::cout << std::chrono::high_resolution_clock::now() - curr << std::endl;
 
 		std::cout << "Commit to one block time: ";
@@ -106,7 +106,7 @@ void insert_ourselt_mindle() {
 
 void commit() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	test.commit();
 	for (uint32_t i = 0; i < 1000; i++) {
 		if (test[i] != i)
@@ -118,7 +118,7 @@ void commit() {
 }
 void decommit() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	test.decommit(4);
 	for (uint32_t i = 0; i < 1000; i++) {
 		if (test[i] != i)
@@ -133,7 +133,7 @@ void decommit() {
 
 void remove_item() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	test.remove(500);
 	for (uint32_t i = 0; i < 999; i++) {
 		if (test[i] != i + (i >= 500))
@@ -144,7 +144,7 @@ void remove_item() {
 }
 void remove_items() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	test.remove(400,600);
 	for (uint32_t i = 0; i < 800; i++) {
 		if (test[i] != i + (i >= 400 ? 200 : 0))
@@ -156,7 +156,7 @@ void remove_items() {
 
 void foreach_test() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	uint64_t res_0 = 0;
 	uint64_t res_1 = 0;
 	uint64_t res_2 = 0;
@@ -182,7 +182,7 @@ void foreach_test() {
 }
 void reverse_foreach_test() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	uint32_t for_test = 900;
 	for (uint32_t& it : test.reverse_range(0,900)) {
 		if (it != --for_test)
@@ -194,7 +194,7 @@ void reverse_foreach_test() {
 
 void flip() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	auto copy = test.flip_copy();
 	uint32_t copy_test = 1000;
 	copy.foreach([&copy_test](uint32_t it) { 
@@ -204,7 +204,7 @@ void flip() {
 }
 constexpr bool constexpr_flip() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	auto copy = test.flip_copy();
 	uint32_t copy_test = 1000;
 	bool result = true;
@@ -221,7 +221,7 @@ constexpr bool constexpr_flip() {
 
 void forreach() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	auto copy = test.flip_copy();
 	size_t i = 0;
 
@@ -233,7 +233,7 @@ void forreach() {
 
 void forreach_range() {
 	list_array<uint32_t> test;
-	for (uint32_t i = 0; i < 1000; i++)test.push_begin(i);
+	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	auto copy = test.flip_copy();
 	size_t i = 700;
 
@@ -268,7 +268,19 @@ void sort_test() {
  	std::cout << "Sort test: passed" << std::endl;
 }
 
-
+void split() {
+	list_array<uint32_t> test;
+	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
+	auto copy = test.split(500);
+	size_t i = 0;
+	test.foreach([&i](uint32_t it) {
+		assert(it == i++ && "Split test failed cause missmatch");
+	});
+	copy.foreach([&i](uint32_t it) {
+		assert(it == i++ && "Split test failed cause missmatch");
+	});
+	std::cout << "Split test: passed" << std::endl;
+}
 
 
 void main() {
@@ -291,6 +303,8 @@ void main() {
 	forreach();
 	forreach_range();
 	sort_test();
+	split();
+
 	std::cout << "list array tests: passed" << std::endl;
 	speed_test();
 }
