@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <iterator>
 
-#if __cplusplus  >= 20202L
+#if __cplusplus  >= 202020L
 #define req(require) requires require
 #define conexpr constexpr
 #else
@@ -872,7 +872,7 @@ private:
 				size > end ?
 				(size >> 3) + (size & 7 ? 1 : 0) :
 				(end >> 3) + (end & 7 ? 1 : 0);
-			uint8_t* remove_filter = new uint8_t[rem_filt_siz](0);
+			uint8_t* remove_filter = new uint8_t[rem_filt_siz]{ 0 };
 			T* arr_inter = block->arr_contain;
 			size_t new_size = size;
 
@@ -2263,7 +2263,7 @@ public:
 			return 0;
 		if (end_pos > _size)
 			throw std::out_of_range("end_pos out of size limit");
-		uint8_t* selector = new uint8_t[((end_pos - start_pos) >> 3) + 1](0);
+		uint8_t* selector = new uint8_t[((end_pos - start_pos) >> 3) + 1]{ 0 };
 		size_t i = 0;
 		foreach(
 			[&](T& it) {
