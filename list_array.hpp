@@ -1,7 +1,6 @@
 #include <stdint.h>
 #include <utility>
 #include <type_traits>
-#include <functional>
 #include <stdexcept>
 #include <iterator>
 
@@ -12,8 +11,6 @@
 #define req(require)
 #define conexpr
 #endif
-
-
 
 template<class T>
 class list_array {
@@ -45,6 +42,12 @@ class list_array {
 		delete[] val;
 		return new_val;
 	}
+	template <typename T>
+	struct _function_traits : public _function_traits<decltype(&T::operator())> {};
+	template <typename ClassType, typename ReturnType, typename... Args>
+	struct _function_traits<ReturnType(ClassType::*)(Args...) const> {
+		typedef ReturnType result_type;
+	};
 public:
 	using value_type = T;
 	using reference = T&;
@@ -1562,8 +1565,7 @@ public:
 
 	template<class _Fn>
 	conexpr void foreach(_Fn interate_function) {
-		using res_t = decltype(std::function{ interate_function })::result_type;
-		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
+		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
 			for (auto& it : *this)
 				if (interate_function(it))
 					break;
@@ -1574,8 +1576,7 @@ public:
 	}
 	template<class _Fn>
 	conexpr void foreach(_Fn interate_function) const {
-		using res_t = decltype(std::function{ interate_function })::result_type;
-		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
+		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
 			for (auto& it : *this)
 				if (interate_function(it))
 					break;
@@ -1586,8 +1587,7 @@ public:
 	}
 	template<class _Fn>
 	conexpr void foreach(_Fn interate_function, size_t start, size_t end) {
-		using res_t = decltype(std::function{ interate_function })::result_type;
-		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
+		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
 			for (auto& it : range(start, end))
 				if (interate_function(it))
 					break;
@@ -1598,8 +1598,7 @@ public:
 	}
 	template<class _Fn>
 	conexpr void foreach(_Fn interate_function, size_t start, size_t end) const {
-		using res_t = decltype(std::function{ interate_function })::result_type;
-		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
+		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
 			for (auto& it : range(start, end))
 				if (interate_function(it))
 					break;
@@ -1611,8 +1610,7 @@ public:
 
 	template<class _Fn>
 	conexpr void forreach(_Fn interate_function) {
-		using res_t = decltype(std::function{ interate_function })::result_type;
-		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
+		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
 			for (auto& it : reverse())
 				if (interate_function(it))
 					break;
@@ -1623,8 +1621,7 @@ public:
 	}
 	template<class _Fn>
 	conexpr void forreach(_Fn interate_function) const {
-		using res_t = decltype(std::function{ interate_function })::result_type;
-		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
+		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
 			for (auto& it : reverse())
 				if (interate_function(it))
 					break;
@@ -1635,8 +1632,7 @@ public:
 	}
 	template<class _Fn>
 	conexpr void forreach(_Fn interate_function, size_t start, size_t end) {
-		using res_t = decltype(std::function{ interate_function })::result_type;
-		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
+		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
 			for (auto& it : reverse_range(start, end))
 				if (interate_function(it))
 					break;
@@ -1647,8 +1643,7 @@ public:
 	}
 	template<class _Fn>
 	conexpr void forreach(_Fn interate_function, size_t start, size_t end) const {
-		using res_t = decltype(std::function{ interate_function })::result_type;
-		if constexpr (std::is_same<res_t, bool>::value || std::is_convertible<res_t, bool>::value) {
+		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
 			for (auto& it : reverse_range(start, end))
 				if (interate_function(it))
 					break;
@@ -2162,6 +2157,5 @@ public:
 		return tmp;
 	}
 };
-
 #undef req
 #undef conexpr
