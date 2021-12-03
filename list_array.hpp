@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <iterator>
 
-#if __cplusplus  >= 202020L
+#if __cplusplus  >= 202002L
 #define req(require) requires require
 #define conexpr constexpr
 #else
@@ -154,7 +154,7 @@ public:
 		}
 		conexpr T& operator*() { return block->arr_contain[pos]; }
 		conexpr const T& operator*() const { return block->arr_contain[pos]; }
-		conexpr iterator& operator->() { return *this; }
+		conexpr T* operator->() { return block->arr_contain + pos; }
 	};
 	template<class T = T>
 	class const_iterator {
@@ -244,9 +244,7 @@ public:
 		conexpr const T& operator*() {
 			return block->arr_contain[pos];
 		}
-		conexpr const_iterator operator->() {
-			return *this;
-		}
+		conexpr T* operator->() { return block->arr_contain + pos; }
 	};
 	template<class T = T>
 	class reverse_iterator {
@@ -320,12 +318,10 @@ public:
 			return block->arr_contain[pos - 1];
 		}
 		conexpr const T& operator*() const {
-			auto tmp = *this;
-			++tmp;
-			return tmp.block->arr_contain[tmp.pos];
+			return block->arr_contain[pos - 1];
 		}
-		conexpr reverse_iterator& operator->() {
-			return *this;
+		conexpr T* operator->() {
+			return block->arr_contain + pos - 1;
 		}
 	};
 	template<class T = T>
@@ -415,7 +411,9 @@ public:
 		conexpr const T& operator*() const {
 			return block->arr_contain[pos - 1];
 		}
-		conexpr const_reverse_iterator& operator->() { return *this; }
+		conexpr T* operator->() { 
+			return block->arr_contain + pos - 1;
+		}
 	};
 
 	class range_provider {
@@ -925,6 +923,7 @@ private:
 			operator=(std::move(move));
 		}
 		conexpr dynamic_arr& operator=(dynamic_arr&& move) noexcept {
+			clear();
 			arr = move.arr;
 			arr_end = move.arr_end;
 			_size = move._size;
@@ -998,7 +997,7 @@ private:
 		conexpr void resize_begin(size_t new_size) {
 			size_t tsize = _size;
 			if (tsize >= new_size) {
-				for (int64_t resizer = tsize - new_size; resizer > 0;) {
+				for (size_t resizer = tsize - new_size; resizer >= 0;) {
 					if (arr->_size > resizer) {
 						_size = new_size;
 						arr->resize_begin(arr->_size - resizer);
@@ -1038,7 +1037,7 @@ private:
 		conexpr void resize_front(size_t new_size) {
 			size_t tsize = _size;
 			if (tsize >= new_size) {
-				for (int64_t resizer = tsize - new_size; resizer > 0;) {
+				for (size_t resizer = tsize - new_size; resizer >= 0;) {
 					if (arr_end->_size > resizer) {
 						_size = new_size;
 						arr_end->resize_front(arr_end->_size - resizer);
@@ -1672,24 +1671,16 @@ public:
 		return res;
 	}
 
-	conexpr list_array& flip_self() {
-		list_array larr(_size);
-		size_t i = 0;
-		for (auto item : reverse())
-			larr[i++] = item;
-		resize(0);
-		arr.arr = arr.arr_end = larr.arr.arr;
-		_size = arr._size = larr._size;
-		larr.arr.arr = larr.arr.arr_end = nullptr;
-		larr._size = larr.arr._size = 0;
-		return *this;
-	}
 	conexpr list_array flip_copy() const {
 		list_array larr(_size);
 		size_t i = 0;
 		for (auto item : reverse())
 			larr[i++] = item;
 		return larr;
+	}
+	conexpr list_array& flip() {
+		operator=(flip_copy());
+		return *this;
 	}
 
 	conexpr reverse_provider reverse() {
@@ -2243,7 +2234,7 @@ public:
 	}
 	conexpr size_t unify(size_t start_pos,size_t end_pos) {
 		list_array<T> tmp_arr;
-		tmp_arr.reserve_push_back(_size >> 2 + 1);
+		tmp_arr.reserve_push_back((_size >> 2) + 1);
 		for (T& it : range(start_pos, end_pos))
 			if (!tmp_arr.contains(it))
 				tmp_arr.push_back(it);
@@ -2310,6 +2301,62 @@ public:
 		return result;
 	}
 
+	conexpr void join(const T& insert_item) {
+		swap(join_copy(insert_item, 0, _size));
+	}
+	conexpr list_array<T> join_copy(const T& insert_item) const {
+		return join_copy(insert_item, 0, _size);
+	}
+	conexpr list_array<T> join_copy(const T& insert_item,size_t start_pos, size_t end_pos) const {
+		list_array<T> res;
+		res.reserve_push_back(_size * 2);
+		if (start_pos > end) {
+			std::swap(start_pos, end);
+			if (end_pos > _size)
+				throw std::out_of_range("end_pos out of size limit");
+			for (auto& i : reverse_range(start_pos, end_pos)) {
+				res.push_back(i);
+				res.push_back(insert_item);
+			}
+		}
+		else {
+			if (end_pos > _size)
+				throw std::out_of_range("end_pos out of size limit");
+			for (auto& i : range(start_pos, end_pos)) {
+				res.push_back(i);
+				res.push_back(insert_item);
+			}
+		}
+		return res;
+	}
+
+	template<class _Fn>
+	conexpr list_array<T> where(_Fn check_fn) const {
+		return where_copy(check_fn, 0, _size);
+	}
+	template<class _Fn>
+	conexpr list_array<T> where(_Fn check_fn, size_t start_pos, size_t end_pos) const {
+		list_array<T> res;
+		res.reserve_push_back(_size);
+		if (start_pos > end) {
+			std::swap(start_pos, end);
+			if (end_pos > _size)
+				throw std::out_of_range("end_pos out of size limit");
+			for (auto& i : reverse_range(start_pos, end_pos))
+				if(check_fn(i))
+					res.push_back(i);
+		}
+		else {
+			if (end_pos > _size)
+				throw std::out_of_range("end_pos out of size limit");
+			for (auto& i : range(start_pos, end_pos))
+				if (check_fn(i))
+					res.push_back(i);
+		}
+		res.shrink_to_fit();
+		return res;
+	}
+
 	conexpr iterator<T> get_iterator(size_t pos) {
 		return arr.get_iterator(reserved_begin + pos);
 	}
@@ -2369,6 +2416,11 @@ public:
 	conexpr const T& at(size_t pos) const {
 		if (pos >= _size)
 			throw std::out_of_range("pos out of size limit");
+		return arr[reserved_begin + pos];
+	}
+	conexpr T atDefault(size_t pos) const {
+		if (pos >= _size)
+			return T();
 		return arr[reserved_begin + pos];
 	}
 
