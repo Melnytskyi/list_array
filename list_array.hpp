@@ -48,6 +48,14 @@ class list_array {
 	struct _function_traits<ReturnType(ClassType::*)(Args...) const> {
 		typedef ReturnType result_type;
 	};
+	template<class _Fn, std::enable_if<std::is_convertible<typename _function_traits<_Fn>::result_type, bool>::value>>
+	static conexpr bool foreach_break_enabled() {
+		return true;
+	}
+	template<typename _Fn>
+	static conexpr bool foreach_break_enabled() {
+		return false;
+	}
 public:
 	using value_type = T;
 	using reference = T&;
@@ -931,10 +939,11 @@ private:
 			return *this;
 		}
 		conexpr dynamic_arr& operator=(const dynamic_arr& copy) {
-			arr_block<T>& tmp = *(arr = arr_end = new arr_block<T>(nullptr, _size = copy._size, nullptr));
+			T* tmp = (arr = arr_end = new arr_block<T>(nullptr, _size = copy._size, nullptr))->arr_contain;
 			size_t i = 0;
 			for (auto& it : copy)
-				tmp[i] = it;
+				tmp[i++] = it;
+			return *this;
 		}
 		conexpr ~dynamic_arr() {
 			clear();
@@ -997,7 +1006,7 @@ private:
 		conexpr void resize_begin(size_t new_size) {
 			size_t tsize = _size;
 			if (tsize >= new_size) {
-				for (size_t resizer = tsize - new_size; resizer >= 0;) {
+				for (size_t resizer = tsize - new_size; resizer > 0;) {
 					if (arr->_size > resizer) {
 						_size = new_size;
 						arr->resize_begin(arr->_size - resizer);
@@ -1037,7 +1046,7 @@ private:
 		conexpr void resize_front(size_t new_size) {
 			size_t tsize = _size;
 			if (tsize >= new_size) {
-				for (size_t resizer = tsize - new_size; resizer >= 0;) {
+				for (size_t resizer = tsize - new_size; resizer > 0;) {
 					if (arr_end->_size > resizer) {
 						_size = new_size;
 						arr_end->resize_front(arr_end->_size - resizer);
@@ -1238,9 +1247,15 @@ public:
 	conexpr list_array() {}
 	conexpr list_array(const std::initializer_list<T>& vals) {
 		resize(vals.size());
-		size_t i = 0;
-		for (const T& it : vals)
-			operator[](i++) = it;
+		auto iter = begin();
+		for (const T& it : vals) {
+			*iter = it;
+			++iter;
+		}
+	}
+	conexpr list_array(const std::initializer_list<list_array<T>>& vals) {
+		for (const list_array<T>& it : vals)
+			push_back(it);
 	}
 	conexpr list_array(size_t size) {
 		resize(size);
@@ -1292,8 +1307,8 @@ public:
 				if (reserved_begin) arr.resize_begin(new_size);
 				reserved_begin = 0;
 			}
-			for (size_t i = _size; i < new_size; i++)
-				(*this)[i] = auto_init;
+			for (auto& it : range(_size,new_size))
+				it = auto_init;
 		}
 		_size = new_size;
 	}
@@ -1564,7 +1579,7 @@ public:
 
 	template<class _Fn>
 	conexpr void foreach(_Fn interate_function) {
-		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
+		if constexpr (foreach_break_enabled<_Fn>()) {
 			for (auto& it : *this)
 				if (interate_function(it))
 					break;
@@ -1575,7 +1590,7 @@ public:
 	}
 	template<class _Fn>
 	conexpr void foreach(_Fn interate_function) const {
-		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
+		if constexpr (foreach_break_enabled<_Fn>()) {
 			for (auto& it : *this)
 				if (interate_function(it))
 					break;
@@ -1586,7 +1601,7 @@ public:
 	}
 	template<class _Fn>
 	conexpr void foreach(_Fn interate_function, size_t start, size_t end) {
-		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
+		if constexpr (foreach_break_enabled<_Fn>()) {
 			for (auto& it : range(start, end))
 				if (interate_function(it))
 					break;
@@ -1597,7 +1612,7 @@ public:
 	}
 	template<class _Fn>
 	conexpr void foreach(_Fn interate_function, size_t start, size_t end) const {
-		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
+		if constexpr (foreach_break_enabled<_Fn>()) {
 			for (auto& it : range(start, end))
 				if (interate_function(it))
 					break;
@@ -1609,7 +1624,7 @@ public:
 
 	template<class _Fn>
 	conexpr void forreach(_Fn interate_function) {
-		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
+		if constexpr (foreach_break_enabled<_Fn>()) {
 			for (auto& it : reverse())
 				if (interate_function(it))
 					break;
@@ -1620,7 +1635,7 @@ public:
 	}
 	template<class _Fn>
 	conexpr void forreach(_Fn interate_function) const {
-		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
+		if constexpr (foreach_break_enabled<_Fn>()) {
 			for (auto& it : reverse())
 				if (interate_function(it))
 					break;
@@ -1631,7 +1646,7 @@ public:
 	}
 	template<class _Fn>
 	conexpr void forreach(_Fn interate_function, size_t start, size_t end) {
-		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
+		if constexpr (foreach_break_enabled<_Fn>()) {
 			for (auto& it : reverse_range(start, end))
 				if (interate_function(it))
 					break;
@@ -1642,7 +1657,7 @@ public:
 	}
 	template<class _Fn>
 	conexpr void forreach(_Fn interate_function, size_t start, size_t end) const {
-		if constexpr (std::is_convertible<_function_traits<_Fn>::result_type, bool>::value) {
+		if constexpr (foreach_break_enabled<_Fn>()) {
 			for (auto& it : reverse_range(start, end))
 				if (interate_function(it))
 					break;
@@ -1671,14 +1686,14 @@ public:
 		return res;
 	}
 
-	conexpr list_array flip_copy() const {
-		list_array larr(_size);
+	conexpr list_array<T> flip_copy() const {
+		list_array<T> larr(_size);
 		size_t i = 0;
 		for (auto item : reverse())
 			larr[i++] = item;
 		return larr;
 	}
-	conexpr list_array& flip() {
+	conexpr list_array<T>& flip() {
 		operator=(flip_copy());
 		return *this;
 	}
@@ -2174,6 +2189,9 @@ public:
 			return res;
 		}
 	}
+	conexpr list_array<T> copy() const {
+		return *this;
+	}
 
 	conexpr size_t unique() {
 		return unique(0, _size);
@@ -2302,7 +2320,7 @@ public:
 	}
 
 	conexpr void join(const T& insert_item) {
-		swap(join_copy(insert_item, 0, _size));
+		operator=(join_copy(insert_item, 0, _size));
 	}
 	conexpr list_array<T> join_copy(const T& insert_item) const {
 		return join_copy(insert_item, 0, _size);
@@ -2310,8 +2328,8 @@ public:
 	conexpr list_array<T> join_copy(const T& insert_item,size_t start_pos, size_t end_pos) const {
 		list_array<T> res;
 		res.reserve_push_back(_size * 2);
-		if (start_pos > end) {
-			std::swap(start_pos, end);
+		if (start_pos > end_pos) {
+			std::swap(start_pos, end_pos);
 			if (end_pos > _size)
 				throw std::out_of_range("end_pos out of size limit");
 			for (auto& i : reverse_range(start_pos, end_pos)) {
@@ -2338,8 +2356,8 @@ public:
 	conexpr list_array<T> where(_Fn check_fn, size_t start_pos, size_t end_pos) const {
 		list_array<T> res;
 		res.reserve_push_back(_size);
-		if (start_pos > end) {
-			std::swap(start_pos, end);
+		if (start_pos > end_pos) {
+			std::swap(start_pos, end_pos);
 			if (end_pos > _size)
 				throw std::out_of_range("end_pos out of size limit");
 			for (auto& i : reverse_range(start_pos, end_pos))
