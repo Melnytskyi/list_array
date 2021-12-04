@@ -57,7 +57,7 @@ void speed_test() {
 
 void index() {
 	list_array<int> test(60);
-	for (size_t i = 0; i < 60; i++)
+	for (int i = 0; i < 60; i++)
 		test[i] = i;
 	for (size_t i = 0; i < 60; i++)
 		assert(test[i] == i && "Index test failed [missmatch]");
@@ -67,7 +67,7 @@ void index() {
 void insert_ourselt_begin() {
 	int test_arr[] = { 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59 };
 	list_array<int> test(60);
-	for (size_t i = 0; i < 60; i++)
+	for (int i = 0; i < 60; i++)
 		test[i] = i;
 	test.insert(0, test);
 	assert(test.size() == 120 && "Insert test 0 failed [size missmatch]");
@@ -80,7 +80,7 @@ void insert_ourselt_begin() {
 void insert_ourselt_end() {
 	int test_arr[] = { 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59 };
 	list_array<int> test(60);
-	for (size_t i = 0; i < 60; i++)
+	for (int i = 0; i < 60; i++)
 		test[i] = i;
 	test.insert(60, test);
 	assert(test.size() == 120 && "Insert test 1 failed [size missmatch]");
@@ -93,7 +93,7 @@ void insert_ourselt_end() {
 void insert_ourselt_mindle() {
 	int test_arr[] = { 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59 };
 	list_array<int> test(60);
-	for (size_t i = 0; i < 60; i++)
+	for (int i = 0; i < 60; i++)
 		test[i] = i;
 	test.insert(30, test);
 	assert(test.size() == 120 && "Insert test 2 failed [size missmatch]");
@@ -273,10 +273,10 @@ void split() {
 	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	auto copy = test.split(500);
 	size_t i = 0;
-	test.foreach([&i](uint32_t it) {
+	test.foreach([&i](auto it) {
 		assert(it == i++ && "Split test failed cause missmatch");
 	});
-	copy.foreach([&i](uint32_t it) {
+	copy.foreach([&i](auto it) {
 		assert(it == i++ && "Split test failed cause missmatch");
 	});
 	std::cout << "Split test: passed" << std::endl;
@@ -303,8 +303,20 @@ void alone() {
 	assert(test == check);
 	std::cout << "Alone test: passed" << std::endl;
 }
+void ini_list0() {
+	list_array<std::string> test {"Hello word","Hello world" ,"ld" ,"Hrld" ,"Hld" ,"ld" ,"He" };
+	test = { test, test, };
+	test = { { test, test }, { test, test}, test };
+	test.unify();
+}
+void ini_list1() {
+	list_array<list_array<std::string>> test{ {"Hello word","Hello world"}, {"ld" ,"Hrld" ,"Hld" ,"ld" ,"He"} };
+	test = { test, test, };
+	test = { { test, test }, { test, test}, test };
+	test.unify();
+}
 
-void main() {
+int main() {
 	index();
 
 	insert_ourselt_begin();
@@ -330,6 +342,10 @@ void main() {
 	unify();
 	alone();
 
+	ini_list0();
+	ini_list1();
+
 	std::cout << "list array tests: passed" << std::endl;
 	speed_test();
+	return 0;
 }
