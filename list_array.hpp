@@ -42,20 +42,6 @@ class list_array {
 		delete[] val;
 		return new_val;
 	}
-	template <typename T>
-	struct _function_traits : public _function_traits<decltype(&T::operator())> {};
-	template <typename ClassType, typename ReturnType, typename... Args>
-	struct _function_traits<ReturnType(ClassType::*)(Args...) const> {
-		typedef ReturnType result_type;
-	};
-	template<class _Fn, std::enable_if<std::is_convertible<typename _function_traits<_Fn>::result_type, bool>::value>>
-	static conexpr bool foreach_break_enabled() {
-		return true;
-	}
-	template<typename _Fn>
-	static conexpr bool foreach_break_enabled() {
-		return false;
-	}
 public:
 	using value_type = T;
 	using reference = T&;
@@ -1257,6 +1243,13 @@ public:
 		for (const list_array<T>& it : vals)
 			push_back(it);
 	}
+	template<typename Iterable>
+	conexpr list_array(Iterable begin, Iterable end,size_t reserve_len = 0) {
+		if (reserve_len)
+			reserve_push_back(reserve_len);
+		while (begin != end)
+			push_back(*begin++);
+	}
 	conexpr list_array(size_t size) {
 		resize(size);
 	}
@@ -1578,96 +1571,6 @@ public:
 	}
 
 	template<class _Fn>
-	conexpr void foreach(_Fn interate_function) {
-		if constexpr (foreach_break_enabled<_Fn>()) {
-			for (auto& it : *this)
-				if (interate_function(it))
-					break;
-		}
-		else
-			for (auto& it : *this)
-				interate_function(it);
-	}
-	template<class _Fn>
-	conexpr void foreach(_Fn interate_function) const {
-		if constexpr (foreach_break_enabled<_Fn>()) {
-			for (auto& it : *this)
-				if (interate_function(it))
-					break;
-		}
-		else
-			for (auto& it : *this)
-				interate_function(it);
-	}
-	template<class _Fn>
-	conexpr void foreach(_Fn interate_function, size_t start, size_t end) {
-		if constexpr (foreach_break_enabled<_Fn>()) {
-			for (auto& it : range(start, end))
-				if (interate_function(it))
-					break;
-		}
-		else
-			for (auto& it : range(start, end))
-				interate_function(it);
-	}
-	template<class _Fn>
-	conexpr void foreach(_Fn interate_function, size_t start, size_t end) const {
-		if constexpr (foreach_break_enabled<_Fn>()) {
-			for (auto& it : range(start, end))
-				if (interate_function(it))
-					break;
-		}
-		else
-			for (auto& it : range(start, end))
-				interate_function(it);
-	}
-
-	template<class _Fn>
-	conexpr void forreach(_Fn interate_function) {
-		if constexpr (foreach_break_enabled<_Fn>()) {
-			for (auto& it : reverse())
-				if (interate_function(it))
-					break;
-		}
-		else
-			for (T& it : reverse())
-				interate_function(it);
-	}
-	template<class _Fn>
-	conexpr void forreach(_Fn interate_function) const {
-		if constexpr (foreach_break_enabled<_Fn>()) {
-			for (auto& it : reverse())
-				if (interate_function(it))
-					break;
-		}
-		else
-			for (auto& it : reverse())
-				interate_function(it);
-	}
-	template<class _Fn>
-	conexpr void forreach(_Fn interate_function, size_t start, size_t end) {
-		if constexpr (foreach_break_enabled<_Fn>()) {
-			for (auto& it : reverse_range(start, end))
-				if (interate_function(it))
-					break;
-		}
-		else
-			for (auto& it : reverse_range(start, end))
-				interate_function(it);
-	}
-	template<class _Fn>
-	conexpr void forreach(_Fn interate_function, size_t start, size_t end) const {
-		if constexpr (foreach_break_enabled<_Fn>()) {
-			for (auto& it : reverse_range(start, end))
-				if (interate_function(it))
-					break;
-		}
-		else
-			for (auto& it : reverse_range(start, end))
-				interate_function(it);
-	}
-
-	template<class _Fn>
 	conexpr size_t remove_if(_Fn check_function) {
 		size_t res = arr.remove_if(check_function, reserved_begin, reserved_begin + _size);
 		_size -= res;
@@ -1755,25 +1658,54 @@ public:
 	conexpr size_t find(const list_array<T>& value, size_t continue_from) const req(std::equality_comparable<T>) {
 		return find(value, 0, value._size, continue_from, _size);
 	}
+	conexpr size_t find(const list_array<T>& value, size_t continue_from, size_t end_pos) const req(std::equality_comparable<T>) {
+		return find(value, 0, value._size, continue_from, end_pos);
+	}
 	conexpr size_t find(const list_array<T>& value, size_t value_start, size_t value_end, size_t continue_from, size_t end) const req(std::equality_comparable<T>) {
-		if (value_end > value._size)
-			throw std::out_of_range("value_end is out of value size limit");
-		auto vbeg = value.get_iterator(value_start);
-		auto ibeg = vbeg;
-		size_t i = value_start;
-		size_t res = continue_from;
-		for (const T& it : range(continue_from, end)) {
-			if (it == *ibeg) {
-				++i;
-				if (i == value_end)
-					return res;
-				++ibeg;
+		if (!value._size)
+			throw std::out_of_range("this value too small for searching value");
+		if (value_start > value_end) {
+			std::swap(value_end, value_start);
+			if (value_end > value._size)
+				throw std::out_of_range("value_end is out of value size limit");
+			auto vbeg = const_reverse_iterator<T>(value.get_iterator(value_end));
+			auto ibeg = vbeg;
+			size_t i = value_start;
+			size_t res = continue_from;
+			for (const T& it : range(continue_from, end)) {
+				if (it == *ibeg) {
+					++i;
+					if (i == value_end)
+						return res;
+					++ibeg;
+				}
+				else {
+					i = value_start;
+					ibeg = vbeg;
+				}
+				++res;
 			}
-			else {
-				i = value_start;
-				ibeg = vbeg;
+		}
+		else {
+			if (value_end > value._size)
+				throw std::out_of_range("value_end is out of value size limit");
+			auto vbeg = value.get_iterator(value_start);
+			auto ibeg = vbeg;
+			size_t i = value_start;
+			size_t res = continue_from;
+			for (const T& it : range(continue_from, end)) {
+				if (it == *ibeg) {
+					++i;
+					if (i == value_end)
+						return res;
+					++ibeg;
+				}
+				else {
+					i = value_start;
+					ibeg = vbeg;
+				}
+				++res;
 			}
-			++res;
 		}
 		return npos;
 	}
@@ -1815,25 +1747,53 @@ public:
 	conexpr size_t findr(const list_array<T>& value, size_t continue_from) const req(std::equality_comparable<T>) {
 		return findr(value, 0, value._size, continue_from, _size);
 	}
+	conexpr size_t findr(const list_array<T>& value, size_t continue_from, size_t end_pos) const req(std::equality_comparable<T>) {
+		return findr(value, 0, value._size, continue_from, end_pos);
+	}
 	conexpr size_t findr(const list_array<T>& value, size_t value_start, size_t value_end, size_t continue_from, size_t end) const req(std::equality_comparable<T>) {
-		if (value_end > value._size)
-			throw std::out_of_range("value_end is out of value size limit");
-		auto vbeg = value.get_iterator(value_start);
-		auto ibeg = vbeg;
-		size_t i = value_start;
-		size_t res = continue_from;
-		for (const T& it : reverse_range(end, continue_from)) {
-			if (it == *ibeg) {
-				++i;
-				if (i == value_end)
-					return res;
-				++ibeg;
+		if (!value._size)
+			throw std::out_of_range("this value too small for searching value");
+		if (value_start > value_end) {
+			if (value_end > value._size)
+				throw std::out_of_range("value_end is out of value size limit");
+			auto vbeg = const_reverse_iterator<T>(value.get_iterator(value_end));
+			auto ibeg = vbeg;
+			size_t i = value_start;
+			size_t res = continue_from;
+			for (const T& it : reverse_range(end, continue_from)) {
+				if (it == *ibeg) {
+					++i;
+					if (i == value_end)
+						return res;
+					++ibeg;
+				}
+				else {
+					i = value_start;
+					ibeg = vbeg;
+				}
+				++res;
 			}
-			else {
-				i = value_start;
-				ibeg = vbeg;
+		}
+		else {
+			if (value_end > value._size)
+				throw std::out_of_range("value_end is out of value size limit");
+			auto vbeg = value.get_iterator(value_start);
+			auto ibeg = vbeg;
+			size_t i = value_start;
+			size_t res = continue_from;
+			for (const T& it : reverse_range(end, continue_from)) {
+				if (it == *ibeg) {
+					++i;
+					if (i == value_end)
+						return res;
+					++ibeg;
+				}
+				else {
+					i = value_start;
+					ibeg = vbeg;
+				}
+				++res;
 			}
-			++res;
 		}
 		return npos;
 	}
@@ -2274,36 +2234,28 @@ public:
 			throw std::out_of_range("end_pos out of size limit");
 		uint8_t* selector = new uint8_t[((end_pos - start_pos) >> 3) + 1]{ 0 };
 		size_t i = 0;
-		foreach(
-			[&](T& it) {
-				if (selector[i >> 3] & (1 << (i & 7))) {
-					i++;
-					return;
-				}
-				size_t j = 0;
-				bool is_unique = true;
-				foreach(
-					[&](T& cmp_it) {
-						if (i == j) {
-							j++;
-							return;
-						}
-						if (it == cmp_it) {
-							is_unique = false;
-							selector[j >> 3] |= (1 << (j & 7));
-						}
-						j++;
-					},
-					start_pos,
-					end_pos
-				);
-				if (!is_unique)
-					selector[i >> 3] |= (1 << (i & 7));
+		for(T& it : range(start_pos, end_pos)){
+			if (selector[i >> 3] & (1 << (i & 7))) {
 				i++;
-			},
-			start_pos,
-			end_pos
-		);
+				continue;
+			}
+			size_t j = 0;
+			bool is_unique = true;
+			for(T& cmp_it : range(start_pos, end_pos)){
+				if (i == j) {
+					j++;
+					continue;
+				}
+				if (it == cmp_it) {
+					is_unique = false;
+					selector[j >> 3] |= (1 << (j & 7));
+				}
+				j++;
+			}
+			if (!is_unique)
+				selector[i >> 3] |= (1 << (i & 7));
+			i++;
+		}
 		i = 0;
 		size_t result = 
 			remove_if(
@@ -2373,6 +2325,51 @@ public:
 		}
 		res.shrink_to_fit();
 		return res;
+	}
+
+	template<class ConvertTo, class _Fn>
+	conexpr list_array<ConvertTo> convert(_Fn iterate_fn) {
+		return convert<ConvertTo>(iterate_fn,0,_size);
+	}
+	template<class ConvertTo, class _Fn>
+	conexpr list_array<ConvertTo> convert(_Fn iterate_fn, size_t start_pos, size_t end_pos) {
+		list_array<ConvertTo> res;
+		res.reserve_push_back(_size);
+		if (start_pos > end_pos) {
+			std::swap(start_pos, end_pos);
+			if (end_pos > _size)
+				throw std::out_of_range("end_pos out of size limit");
+			for (auto& i : reverse_range(start_pos, end_pos))
+				res.push_back(iterate_fn(i));
+		}
+		else {
+			if (end_pos > _size)
+				throw std::out_of_range("end_pos out of size limit");
+			for (auto& i : range(start_pos, end_pos))
+				res.push_back(iterate_fn(i));
+		}
+		return res;
+	}
+
+	conexpr void erase(const T& val) {
+		remove_if([&val](const T& cmp) { return cmp == val; });
+	}
+	conexpr void erase(const T& val, size_t start_pos, size_t end_pos) {
+		remove_if([&val](const T& cmp) { return cmp == val; }, start_pos, end_pos);
+	}
+	conexpr void erase(const list_array<T>& range) {
+		erase(range,0,range._size, 0, _size);
+	}
+	conexpr void erase(const list_array<T>& range, size_t start_pos, size_t end_pos) {
+		erase(range, 0, range._size, start_pos, end_pos);
+	}
+	conexpr void erase(const list_array<T>& range, size_t range_start, size_t range_end, size_t start_pos, size_t end_pos) {
+		list_array<size_t> remove_pos;
+		size_t range_size = range_start > range_end ? range_start - range_end : range_end - range_start;
+		size_t find_item = start_pos;
+		while (find_item = find(range, range_start, range_end, find_item, end_pos) != npos)
+			remove_pos.push_back(find_item - range_size);
+		for(size_t val : remove_pos) { remove(val, range_size); }
 	}
 
 	conexpr iterator<T> get_iterator(size_t pos) {
