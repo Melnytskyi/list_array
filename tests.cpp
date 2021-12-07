@@ -25,15 +25,15 @@ void speed_test() {
 		for (uint32_t i = 0; i < 1000000000; i++) 
 			a += test[i];
 		std::cout << std::chrono::high_resolution_clock::now() - curr << ", elems sum: " << a << std::endl;
-		std::cout << "Foreach 1000000000 elems time: ";
+		std::cout << "For 1000000000 elems time: ";
 		curr = std::chrono::high_resolution_clock::now();
 		a = 0;
-		test.foreach([&a](uint32_t& it) { a += it; });
+		for(uint32_t& it : test) a += it;
 		std::cout << std::chrono::high_resolution_clock::now() - curr << ", elems sum: " << a << std::endl;
-		std::cout << "Forreach 1000000000 elems time: ";
+		std::cout << "For reverse 1000000000 elems time: ";
 		curr = std::chrono::high_resolution_clock::now();
 		a = 0;
-		test.forreach([&a](uint32_t& it) { a += it; });
+		for (uint32_t& it : test.reverse()) a += it;
 		std::cout << std::chrono::high_resolution_clock::now() - curr << ", elems sum: " << a << std::endl;
 
 		std::cout << "Remove speed: ";
@@ -49,7 +49,7 @@ void speed_test() {
 		std::cout << "After remove if foreach: ";
 		curr = std::chrono::high_resolution_clock::now();
 		a = 0;
-		test.foreach([&a](uint32_t& it) { a += it; });
+		for (uint32_t& it : test) a += it;
 		std::cout << std::chrono::high_resolution_clock::now() - curr << ", elems sum: " << a << std::endl;
 	}
 }
@@ -157,27 +157,23 @@ void remove_items() {
 void foreach_test() {
 	list_array<uint32_t> test;
 	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
-	uint64_t res_0 = 0;
 	uint64_t res_1 = 0;
 	uint64_t res_2 = 0;
 	uint64_t res_3 = 0;
 
-
-	test.foreach([&res_0](uint32_t& it) { res_0 += it; });
+	for (uint32_t& it : test)
+		res_1 += it;
 
 	uint64_t tt = 1000;
-	test.forreach([&res_1,&tt](uint32_t& it) {
+	for(uint32_t& it : test.reverse()) {
 		assert(it == --tt);
-		res_1 += it;
-	});
-
-	for (uint32_t& it : test)
 		res_2 += it;
+	}
 	
 	for (uint32_t i = 0; i < 1000; i++)
 		res_3 += test[i];
 
-	assert(res_0 == res_1 && res_1 == res_2 && res_2 == res_3 && "For test failed [result missmatch]");
+	assert(res_1 == res_2 && res_2 == res_3 && "For test failed [result missmatch]");
 	std::cout << "For test: passed" << std::endl;
 }
 void reverse_foreach_test() {
@@ -197,9 +193,9 @@ void flip() {
 	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	auto copy = test.flip_copy();
 	uint32_t copy_test = 1000;
-	copy.foreach([&copy_test](uint32_t it) { 
+	for(uint32_t it : test) { 
 		assert(it == --copy_test && "Flip test failed cause missmatch");
-	});
+	}
 	std::cout << "Flip test: passed" << std::endl;
 }
 constexpr bool constexpr_flip() {
@@ -208,14 +204,13 @@ constexpr bool constexpr_flip() {
 	auto copy = test.flip_copy();
 	uint32_t copy_test = 1000;
 	bool result = true;
-	copy.foreach([&copy_test, &result](uint32_t it) {
-		if (it != --copy_test)
-		{
+	for (uint32_t it : test) {
+		if (it != --copy_test) {
 			result = false;
 			return true;
 		}
 		return false;
-		});
+	}
 	return result;
 }
 
@@ -224,10 +219,8 @@ void forreach() {
 	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	auto copy = test.flip_copy();
 	size_t i = 0;
-
-	copy.forreach([&test,&i](uint32_t it) {
+	for(uint32_t it : test.reverse())
 		assert(it == test[i++]  && "For revese each test failed cause missmatch");
-	});
 	std::cout << "For reverse each test: passed" << std::endl;
 }
 
@@ -237,13 +230,9 @@ void forreach_range() {
 	auto copy = test.flip_copy();
 	size_t i = 700;
 
-	copy.forreach(
-		[&test, &i](uint32_t it) {
-			assert(it == test[i++] && "For revese each range test failed cause missmatch");
-		},
-		100,
-		300
-	);
+	for(uint32_t it : test.reverse_range(100,300)) 
+		assert(it == test[i++] && "For revese each range test failed cause missmatch");
+
 	std::cout << "For reverse each range test: passed" << std::endl;
 }
 
@@ -256,15 +245,13 @@ void sort_test() {
 
 	size_t i = 0;
 	uint32_t cmp = 0;
-	test.foreach(
-		[&test, &i,&cmp](uint32_t it) {
-			if(cmp >it)
-				assert(false && "Sort test failed cause missmatch");
-			else 
-				cmp = it;
-			++i;
-		}
-	);
+	for(uint32_t it : test) {
+		if(cmp >it)
+			assert(false && "Sort test failed cause missmatch");
+		else 
+			cmp = it;
+		++i;
+	}
  	std::cout << "Sort test: passed" << std::endl;
 }
 
@@ -273,12 +260,12 @@ void split() {
 	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	auto copy = test.split(500);
 	size_t i = 0;
-	test.foreach([&i](auto it) {
+	for(auto it:test)
 		assert(it == i++ && "Split test failed cause missmatch");
-	});
-	copy.foreach([&i](auto it) {
+
+	for (auto it : test)
 		assert(it == i++ && "Split test failed cause missmatch");
-	});
+
 	std::cout << "Split test: passed" << std::endl;
 }
 
@@ -316,6 +303,14 @@ void ini_list1() {
 	test.unify();
 }
 
+void convert_test() {
+	std::vector<std::string> test{ "Hello word","Hello world" ,"ld" ,"Hrld" ,"Hld" ,"ld" ,"He" };
+	list_array<std::string> check{ "Hello word","Hello world" ,"ld" ,"Hrld" ,"Hld" ,"ld" ,"He" };
+	list_array<std::string> converted(test.begin(),test.end());
+	assert(check == converted);
+	std::cout << "Convert test: passed" << std::endl;
+}
+
 int main() {
 	index();
 
@@ -344,6 +339,8 @@ int main() {
 
 	ini_list0();
 	ini_list1();
+
+	convert_test();
 
 	std::cout << "list array tests: passed" << std::endl;
 	speed_test();
