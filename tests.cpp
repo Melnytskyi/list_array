@@ -3,54 +3,59 @@
 #include <assert.h>
 #include "list_array.hpp"
 
+
+inline auto milisec_now_time() {
+	return std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now());
+}
+
 void speed_test() {
 	for (size_t i = 0; i < 1; i++) {
-		std::chrono::steady_clock::time_point curr;
+		std::chrono::time_point<std::chrono::steady_clock,std::chrono::milliseconds> curr;
 
 		list_array<uint32_t> test;
 		uint64_t a = 0;
 
 		std::cout << "Push only time: ";
-		curr = std::chrono::high_resolution_clock::now();
+		curr = milisec_now_time();
 		for (uint32_t i = 0; i < 1000000000; i++)test.push_back(i);
-		std::cout << std::chrono::high_resolution_clock::now() - curr << std::endl;
+		std::cout << milisec_now_time() - curr << std::endl;
 
 		std::cout << "Commit to one block time: ";
-		curr = std::chrono::high_resolution_clock::now();
+		curr = milisec_now_time();
 		test.commit();
-		std::cout << std::chrono::high_resolution_clock::now() - curr << std::endl;
+		std::cout << milisec_now_time() - curr << std::endl;
 		
 		std::cout << "Default index 1000000000 elems time: ";
-		curr = std::chrono::high_resolution_clock::now();
+		curr = milisec_now_time();
 		for (uint32_t i = 0; i < 1000000000; i++) 
 			a += test[i];
-		std::cout << std::chrono::high_resolution_clock::now() - curr << ", elems sum: " << a << std::endl;
+		std::cout << milisec_now_time() - curr << ", elems sum: " << a << std::endl;
 		std::cout << "For 1000000000 elems time: ";
-		curr = std::chrono::high_resolution_clock::now();
+		curr = milisec_now_time();
 		a = 0;
 		for(uint32_t& it : test) a += it;
-		std::cout << std::chrono::high_resolution_clock::now() - curr << ", elems sum: " << a << std::endl;
+		std::cout << milisec_now_time() - curr << ", elems sum: " << a << std::endl;
 		std::cout << "For reverse 1000000000 elems time: ";
-		curr = std::chrono::high_resolution_clock::now();
+		curr = milisec_now_time();
 		a = 0;
 		for (uint32_t& it : test.reverse()) a += it;
-		std::cout << std::chrono::high_resolution_clock::now() - curr << ", elems sum: " << a << std::endl;
+		std::cout << milisec_now_time() - curr << ", elems sum: " << a << std::endl;
 
-		std::cout << "Remove speed: ";
-		curr = std::chrono::high_resolution_clock::now();
+		std::cout << "Remove speed(100 items at end): ";
+		curr = milisec_now_time();
 		test.remove(test.size() - 100, test.size());
-		std::cout << std::chrono::high_resolution_clock::now() - curr << std::endl;
+		std::cout << milisec_now_time() - curr << std::endl;
 
-		std::cout << "Remove if (half array): " << test.size() << "   ";
-		curr = std::chrono::high_resolution_clock::now();
+		std::cout << "Remove if (half array): \n\tpre remove sum: " << test.size() << "\n\t remove time:   ";
+		curr = milisec_now_time();
 		test.remove_if([](auto& it) { return (bool)(it & 1); });
-		std::cout << std::chrono::high_resolution_clock::now() - curr << test.size() << std::endl << std::endl;
+		std::cout << milisec_now_time() - curr << "\n\tafter remove sum: " <<test.size() << std::endl << std::endl;
 
 		std::cout << "After remove if foreach: ";
-		curr = std::chrono::high_resolution_clock::now();
+		curr = milisec_now_time();
 		a = 0;
 		for (uint32_t& it : test) a += it;
-		std::cout << std::chrono::high_resolution_clock::now() - curr << ", elems sum: " << a << std::endl;
+		std::cout << milisec_now_time() - curr << ", elems sum: " << a << std::endl;
 	}
 }
 
@@ -193,7 +198,7 @@ void flip() {
 	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	auto copy = test.flip_copy();
 	uint32_t copy_test = 1000;
-	for(uint32_t it : test) { 
+	for(uint32_t it : copy) {
 		assert(it == --copy_test && "Flip test failed cause missmatch");
 	}
 	std::cout << "Flip test: passed" << std::endl;
@@ -220,7 +225,7 @@ void forreach() {
 	auto copy = test.flip_copy();
 	size_t i = 0;
 	for(uint32_t it : test.reverse())
-		assert(it == test[i++]  && "For revese each test failed cause missmatch");
+		assert(it == copy[i++]  && "For revese each test failed cause missmatch");
 	std::cout << "For reverse each test: passed" << std::endl;
 }
 
@@ -228,10 +233,10 @@ void forreach_range() {
 	list_array<uint32_t> test;
 	for (uint32_t i = 0; i < 1000; i++)test.push_back(i);
 	auto copy = test.flip_copy();
-	size_t i = 700;
+	size_t i = 300;
 
 	for(uint32_t it : test.reverse_range(100,300)) 
-		assert(it == test[i++] && "For revese each range test failed cause missmatch");
+		assert(it == test[--i] && "For revese each range test failed cause missmatch");
 
 	std::cout << "For reverse each range test: passed" << std::endl;
 }
@@ -261,9 +266,6 @@ void split() {
 	auto copy = test.split(500);
 	size_t i = 0;
 	for(auto it:test)
-		assert(it == i++ && "Split test failed cause missmatch");
-
-	for (auto it : test)
 		assert(it == i++ && "Split test failed cause missmatch");
 
 	std::cout << "Split test: passed" << std::endl;
