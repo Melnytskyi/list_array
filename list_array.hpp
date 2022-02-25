@@ -1,3 +1,5 @@
+#ifndef LIST_ARRAY
+#define LIST_ARRAY
 #include <stdint.h>
 #include <utility>
 #include <type_traits>
@@ -17,7 +19,7 @@ class list_array {
 	template<class T>
 	class dynamic_arr;
 	template<class T>
-	class arr_block; 
+	class arr_block;
 	template<class T>
 	conexpr static T* cxxresize(T* val, size_t old_size, size_t new_size) {
 		if (new_size == old_size)
@@ -405,7 +407,7 @@ public:
 		conexpr const T& operator*() const {
 			return block->arr_contain[pos - 1];
 		}
-		conexpr T* operator->() { 
+		conexpr T* operator->() {
 			return block->arr_contain + pos - 1;
 		}
 	};
@@ -687,13 +689,22 @@ private:
 				throw std::bad_alloc();
 
 			int64_t dif = _size - siz;
-			if (dif > 0)
-				for (size_t i = 0; i < siz && i < _size; i++)
-					narr[i] = arr_contain[i + dif];
+			if (dif > 0) {
+				if constexpr (std::is_move_assignable<T>::value)
+					for (size_t i = 0; i < siz && i < _size; i++)
+						narr[i] = std::move(arr_contain[i + dif]);
+				else
+					for (size_t i = 0; i < siz && i < _size; i++)
+						narr[i] = arr_contain[i + dif];
+			}
 			else {
 				dif *= -1;
-				for (size_t i = 0; i < siz && i < _size; i++)
-					narr[dif + i] = arr_contain[i];
+				if constexpr (std::is_move_assignable<T>::value)
+					for (size_t i = 0; i < siz && i < _size; i++)
+						narr[dif + i] = std::move(arr_contain[i]);
+				else
+					for (size_t i = 0; i < siz && i < _size; i++)
+						narr[dif + i] = arr_contain[i];
 			}
 			delete[] arr_contain;
 			arr_contain = narr;
@@ -908,6 +919,7 @@ private:
 				delete this_block;
 			}
 			_size = 0;
+			arr = arr_end = nullptr;
 		}
 		conexpr dynamic_arr() {}
 		conexpr dynamic_arr(const dynamic_arr& copy) {
@@ -959,7 +971,7 @@ private:
 				return arr->get_iterator(pos);
 			else {
 				if (_size - pos - 1 == size_t(-1))
-					return iterator<T>(arr_end, arr_end->_size);
+					return iterator<T>(arr_end, arr_end ? arr_end->_size : 0);
 				else
 					return arr_end->get_iterator_back(_size - pos - 1);
 			}
@@ -969,7 +981,7 @@ private:
 				return arr->get_iterator(pos);
 			else {
 				if (_size - pos - 1 == size_t(-1))
-					return iterator<T>(arr_end, arr_end->_size);
+					return iterator<T>(arr_end, arr_end ? arr_end->_size : 0);
 				else
 					return arr_end->get_iterator_back(_size - pos - 1);
 			}
@@ -1244,7 +1256,7 @@ public:
 			push_back(it);
 	}
 	template<typename Iterable>
-	conexpr list_array(Iterable begin, Iterable end,size_t reserve_len = 0) {
+	conexpr list_array(Iterable begin, Iterable end, size_t reserve_len = 0) {
 		if (reserve_len)
 			reserve_push_back(reserve_len);
 		while (begin != end)
@@ -1285,6 +1297,10 @@ public:
 	conexpr size_t size() const {
 		return _size;
 	}
+	conexpr bool empty() const {
+		return !_size;
+	}
+
 	template<bool do_shrink = false>
 	conexpr void resize(size_t new_size) {
 		static_assert(std::is_default_constructible<T>::value, "This type not default constructable");
@@ -1300,7 +1316,7 @@ public:
 				if (reserved_begin) arr.resize_begin(new_size);
 				reserved_begin = 0;
 			}
-			for (auto& it : range(_size,new_size))
+			for (auto& it : range(_size, new_size))
 				it = auto_init;
 		}
 		_size = new_size;
@@ -1318,7 +1334,8 @@ public:
 			std::swap(start_pos, end_pos);
 		if (end_pos > _size)
 			throw std::out_of_range("end_pos value out of size limit");
-		_size -= arr.remove_items(reserved_begin + start_pos, reserved_begin + end_pos);
+		if (start_pos != end_pos)
+			_size -= arr.remove_items(reserved_begin + start_pos, reserved_begin + end_pos);
 	}
 
 	conexpr void reserve_push_front(size_t reserve_size) {
@@ -1372,23 +1389,55 @@ public:
 	}
 
 	conexpr void pop_back() {
-		remove(_size - 1);
+		if (_size) {
+			++reserved_end;
+			--_size;
+		}
+		else
+			throw std::out_of_range("This list_array is empty");
 	}
 	conexpr void pop_front() {
-		remove(0);
+		if (_size) {
+			++reserved_begin;
+			--_size;
+		}
+		else
+			throw std::out_of_range("This list_array is empty");
 	}
 
+	conexpr T take_back() {
+		if (_size) {
+			T tmp(std::move(operator[](_size - 1)));
+			++reserved_end;
+			--_size;
+			return tmp;
+		}
+		else
+			throw std::out_of_range("This list_array is empty");
+	}
+	conexpr T take_front() {
+		if (_size) {
+			T tmp(std::move(operator[](0)));
+			++reserved_begin;
+			--_size;
+			return tmp;
+		}
+		else
+			throw std::out_of_range("This list_array is empty");
+	}
+	
+
 	conexpr T& back() {
-		return operator[](0);
+		return operator[](_size - 1);
 	}
 	conexpr T& front() {
-		return operator[](_size-1);
-	}
-	conexpr const T& back() const {
 		return operator[](0);
 	}
-	conexpr const T& front() const {
+	conexpr const T& back() const {
 		return operator[](_size - 1);
+	}
+	conexpr const T& front() const {
+		return operator[](0);
 	}
 
 
@@ -1405,6 +1454,10 @@ public:
 		arr.insert_block(reserved_begin + pos, as_array, item._size);
 		_size += item._size;
 		delete[] as_array;
+	}
+	conexpr void insert(size_t pos, const list_array<T>& item, size_t start, size_t end) {
+		auto item_range = item.range(start, end);
+		insert(pos, list_array<T>(item_range.begin(), item_range.end()));
 	}
 	conexpr void insert(size_t pos, const T& item) {
 		if (pos == _size)
@@ -1521,7 +1574,7 @@ public:
 
 	conexpr bool contains(const list_array<T>& value) const req(std::equality_comparable<T>) {
 		return contains(value, 0, value._size, 0, _size);
-	}	
+	}
 	conexpr bool contains(const list_array<T>& value, size_t start, size_t end) const req(std::equality_comparable<T>) {
 		return contains(value, 0, value._size, start, end);
 	}
@@ -1548,7 +1601,7 @@ public:
 
 	template<class _Fn>
 	conexpr bool contains_one(_Fn check_functon) const {
-		return contains_one(check_functon,0,_size);
+		return contains_one(check_functon, 0, _size);
 	}
 	template<class _Fn>
 	conexpr size_t contains_multiply(_Fn check_functon) const {
@@ -1585,6 +1638,25 @@ public:
 		if (start > _size)
 			throw std::out_of_range("start value out of size limit");
 		size_t res = arr.remove_if(check_function, reserved_begin + start, reserved_begin + end);
+		_size -= res;
+		return res;
+	}
+
+	template<class _Fn>
+	conexpr size_t remove_same(T val, size_t start, size_t end, _Fn comparer = [](T f, T s) { return f == s; }) {
+		if (start > end)
+			std::swap(start, end);
+		if (end > _size)
+			throw std::out_of_range("end value out of size limit");
+		if (start > _size)
+			throw std::out_of_range("start value out of size limit");
+		size_t res = arr.remove_if([](T cval) { return comparer(val, cval); }, reserved_begin + start, reserved_begin + end);
+		_size -= res;
+		return res;
+	}
+	template<class _Fn>
+	conexpr size_t remove_same(T val, _Fn comparer) {
+		size_t res = arr.remove_if([](T cval) { return comparer(val, cval); }, reserved_begin, reserved_begin + _size);
 		_size -= res;
 		return res;
 	}
@@ -1711,7 +1783,7 @@ public:
 	}
 
 	conexpr size_t findr(const T& value) const req(std::equality_comparable<T>) {
-		return findr(value,_size);
+		return findr(value, _size);
 	}
 	conexpr size_t findr(const T& value, size_t continue_from) const req(std::equality_comparable<T>) {
 		size_t i = 0;
@@ -1838,8 +1910,8 @@ public:
 	}
 	conexpr list_array<T>& sort() {
 		if constexpr (std::is_unsigned<T>::value) {
-			const T& mival = min();
-			size_t dif = max() - mival + 1;
+			const T& mival = mmin();
+			size_t dif = mmax() - mival + 1;
 			list_array<size_t> count_arr(dif);
 			list_array<T> result(_size);
 			{
@@ -1862,8 +1934,8 @@ public:
 				constexpr size_t to_shift = sizeof(8) * 4;
 				return size_t((SIZE_MAX >> to_shift) + to);
 			};
-			size_t mival = normalize(min());
-			size_t dif = normalize(max()) - mival + 1;
+			size_t mival = normalize(mmin());
+			size_t dif = normalize(mmax()) - mival + 1;
 			list_array<size_t> count_arr(dif, 0);
 			list_array<T> result(_size);
 			{
@@ -1947,7 +2019,7 @@ public:
 		return *this;
 	}
 
-	conexpr const T& max() const {
+	conexpr const T& mmax() const {
 		if (!_size)
 			throw std::length_error("This list_array size is zero");
 		const T* max = &operator[](0);
@@ -1956,7 +2028,7 @@ public:
 				max = &it;
 		return *max;
 	}
-	conexpr const T& min() const {
+	conexpr const T& mmin() const {
 		if (!_size)
 			throw std::length_error("This list_array size is zero");
 		const T* min = &operator[](0);
@@ -2020,19 +2092,25 @@ public:
 			throw std::out_of_range("Fail split due small array or split_pos is equal with array size");
 		list_array<T> res(_size - split_pos);
 		size_t i = 0;
-		for (auto& it : range(split_pos,_size))
+		for (auto& it : range(split_pos, _size))
 			res[i++] = std::move(it);
 		remove(split_pos, _size);
 		return res;
 	}
+	conexpr list_array<T> take() {
+		list_array<T> res(0);
+		res.swap(*this);
+		return res;
+	}
+
 	conexpr T take(size_t take_pos) {
 		if (_size <= take_pos)
-			throw std::out_of_range("Fail take item due small array");		
+			throw std::out_of_range("Fail take item due small array");
 		T res(std::move(operator[](take_pos)));
 		remove(take_pos);
 		return res;
 	}
-	conexpr list_array<T> take(size_t start_pos,size_t end_pos) {
+	conexpr list_array<T> take(size_t start_pos, size_t end_pos) {
 		if (start_pos > end_pos) {
 			std::swap(start_pos, end_pos);
 			if (_size < end_pos)
@@ -2055,11 +2133,11 @@ public:
 			return res;
 		}
 	}
-	template<class _Fn>
+	template<class _Fn, std::enable_if<std::is_function<_Fn>::value>>
 	conexpr list_array<T> take(_Fn select_fn) {
 		return take(select_fn, 0, _size);
 	}
-	template<class _Fn>
+	template<class _Fn, std::enable_if<std::is_function<_Fn>::value>>
 	conexpr list_array<T> take(_Fn select_fn, size_t start_pos, size_t end_pos) {
 		size_t i = 0;
 		size_t taken_items = 0;
@@ -2085,7 +2163,7 @@ public:
 					res.push_back(it);
 			}
 			remove_if(
-				[selector,&i]() {
+				[selector, &i]() {
 					bool res = selector[i >> 3] & (1 << (i & 7));
 					i++;
 					return res;
@@ -2117,10 +2195,10 @@ public:
 			i = 0;
 			remove_if(
 				[selector, &i]() {
-				bool res = selector[i >> 3] & (1 << (i & 7));
-				i++;
-				return res;
-				}, 
+					bool res = selector[i >> 3] & (1 << (i & 7));
+					i++;
+					return res;
+				},
 				start_pos,
 				end_pos
 			);
@@ -2161,12 +2239,12 @@ public:
 			std::swap(start_pos, end_pos);
 		if (start_pos + 1 >= end_pos)
 			return 0;
-		if(end_pos > _size)
+		if (end_pos > _size)
 			throw std::out_of_range("end_pos out of size limit");
 		T* it = &operator[](start_pos);
 		size_t res = 0;
 		remove_if(
-			[&it,&res](T& check_it) {
+			[&it, &res](T& check_it) {
 				if (check_it == *it)
 					return (bool)++res;
 				it = &check_it;
@@ -2181,7 +2259,7 @@ public:
 	//keep only unique item neighbors
 	template<class _Fn>
 	conexpr size_t unique(_Fn compare_func) {
-		return unique(compare_func,0, _size);
+		return unique(compare_func, 0, _size);
 	}
 	template<class _Fn>
 	conexpr size_t unique(_Fn compare_func, size_t start_pos, size_t end_pos) {
@@ -2210,7 +2288,7 @@ public:
 	conexpr size_t unify() {
 		return unify(0, _size);
 	}
-	conexpr size_t unify(size_t start_pos,size_t end_pos) {
+	conexpr size_t unify(size_t start_pos, size_t end_pos) {
 		list_array<T> tmp_arr;
 		tmp_arr.reserve_push_back((_size >> 2) + 1);
 		for (T& it : range(start_pos, end_pos))
@@ -2220,7 +2298,7 @@ public:
 		swap(tmp_arr);
 		return tmp_arr._size - _size;
 	}
-	
+
 	//keep only unique from all array
 	conexpr size_t alone() {
 		return alone(0, _size);
@@ -2234,14 +2312,14 @@ public:
 			throw std::out_of_range("end_pos out of size limit");
 		uint8_t* selector = new uint8_t[((end_pos - start_pos) >> 3) + 1]{ 0 };
 		size_t i = 0;
-		for(T& it : range(start_pos, end_pos)){
+		for (T& it : range(start_pos, end_pos)) {
 			if (selector[i >> 3] & (1 << (i & 7))) {
 				i++;
 				continue;
 			}
 			size_t j = 0;
 			bool is_unique = true;
-			for(T& cmp_it : range(start_pos, end_pos)){
+			for (T& cmp_it : range(start_pos, end_pos)) {
 				if (i == j) {
 					j++;
 					continue;
@@ -2277,7 +2355,7 @@ public:
 	conexpr list_array<T> join_copy(const T& insert_item) const {
 		return join_copy(insert_item, 0, _size);
 	}
-	conexpr list_array<T> join_copy(const T& insert_item,size_t start_pos, size_t end_pos) const {
+	conexpr list_array<T> join_copy(const T& insert_item, size_t start_pos, size_t end_pos) const {
 		list_array<T> res;
 		res.reserve_push_back(_size * 2);
 		if (start_pos > end_pos) {
@@ -2313,7 +2391,7 @@ public:
 			if (end_pos > _size)
 				throw std::out_of_range("end_pos out of size limit");
 			for (auto& i : reverse_range(start_pos, end_pos))
-				if(check_fn(i))
+				if (check_fn(i))
 					res.push_back(i);
 		}
 		else {
@@ -2329,7 +2407,7 @@ public:
 
 	template<class ConvertTo, class _Fn>
 	conexpr list_array<ConvertTo> convert(_Fn iterate_fn) {
-		return convert<ConvertTo>(iterate_fn,0,_size);
+		return convert<ConvertTo>(iterate_fn, 0, _size);
 	}
 	template<class ConvertTo, class _Fn>
 	conexpr list_array<ConvertTo> convert(_Fn iterate_fn, size_t start_pos, size_t end_pos) {
@@ -2358,7 +2436,7 @@ public:
 		remove_if([&val](const T& cmp) { return cmp == val; }, start_pos, end_pos);
 	}
 	conexpr void erase(const list_array<T>& range) {
-		erase(range,0,range._size, 0, _size);
+		erase(range, 0, range._size, 0, _size);
 	}
 	conexpr void erase(const list_array<T>& range, size_t start_pos, size_t end_pos) {
 		erase(range, 0, range._size, start_pos, end_pos);
@@ -2369,7 +2447,7 @@ public:
 		size_t find_item = start_pos;
 		while (find_item = find(range, range_start, range_end, find_item, end_pos) != npos)
 			remove_pos.push_back(find_item - range_size);
-		for(size_t val : remove_pos) { remove(val, range_size); }
+		for (size_t val : remove_pos) { remove(val, range_size); }
 	}
 
 	conexpr iterator<T> get_iterator(size_t pos) {
@@ -2447,3 +2525,4 @@ public:
 };
 #undef req
 #undef conexpr
+#endif
