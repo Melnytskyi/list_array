@@ -1472,6 +1472,46 @@ public:
 		_size++;
 	}
 
+	conexpr void ordered_insert(const T& item) {
+		size_t i = 0;
+		for (auto& it : *this) {
+			if (it > item)
+				break;
+			i++;
+		}
+		insert(i, item);
+	}
+	conexpr void ordered_insert(T&& item) {
+		size_t i = 0;
+		for (auto& it : *this) {
+			if (it > item)
+				break;
+			i++;
+		}
+		insert(i, std::move(item));
+	}
+
+	template<class _Fn>
+	conexpr void ordered_insert(const T& item, _Fn order_checker) {
+		size_t i = 0;
+		for (auto& it : *this) {
+			if (order_checker(it,item))
+				break;
+			i++;
+		}
+		insert(i, item);
+	}
+	template<class _Fn>
+	conexpr void ordered_insert(T&& item, _Fn order_checker) {
+		size_t i = 0;
+		for (auto& it : *this) {
+			if (order_checker(it, item))
+				break;
+			i++;
+		}
+		insert(i, std::move(item));
+	}
+
 	conexpr void push_front(T* array, size_t arr_size) {
 		insert(0, array, arr_size);
 	}
