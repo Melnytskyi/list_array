@@ -970,6 +970,8 @@ private:
 			return arr_end->index_back(_size - pos - 1);
 		}
 		conexpr iterator<T> get_iterator(size_t pos) {
+			if(!_size)
+				return iterator<T>(nullptr, 0);
 			if (pos < (_size >> 1))
 				return arr->get_iterator(pos);
 			else {
@@ -980,6 +982,8 @@ private:
 			}
 		}
 		conexpr const_iterator<T> get_iterator(size_t pos) const {
+			if (!_size)
+				return iterator<T>(nullptr, 0);
 			if (pos < (_size >> 1))
 				return arr->get_iterator(pos);
 			else {
@@ -2239,6 +2243,16 @@ public:
 		remove(take_pos);
 		return res;
 	}
+	conexpr T* take_raw(size_t& size) {
+		if (blocks_more(1))
+			commit();
+		size = _size;
+		T* res = arr.arr->arr_contain;
+		arr.arr->arr_contain = nullptr;
+		clear();
+		return res;
+	}
+	
 	conexpr list_array<T> take(size_t start_pos, size_t end_pos) {
 		if (start_pos > end_pos) {
 			std::swap(start_pos, end_pos);
