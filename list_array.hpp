@@ -641,7 +641,9 @@ namespace __list_array_impl{
 		}
 
 
-		conexpr void remove_item_slow(size_t pos, arr_block<T>& this_block) {
+		conexpr void remove_item_slow(iterator<T> block) {
+			size_t pos = block.pos;
+			auto& this_block = *block.block;
 			if (pos > this_block._size / 2) {
 				size_t mov_to = this_block._size - 1;
 				for (size_t i = pos; i < mov_to; i++)
@@ -655,7 +657,9 @@ namespace __list_array_impl{
 				this_block.resize_begin(this_block._size - 1);
 			}
 		}
-		conexpr void remove_item_split(size_t pos, arr_block<T>& this_block) {
+		conexpr void remove_item_split(iterator<T> block) {
+			size_t pos = block.pos;
+			auto& this_block = *block.block;
 			size_t block_size = this_block._size;
 			arr_block<T>& first_block = *new arr_block<T>(nullptr, pos, nullptr);
 			arr_block<T>& second_block = *new arr_block<T>(&first_block, block_size - pos - 1, nullptr);
@@ -670,7 +674,9 @@ namespace __list_array_impl{
 			swap_block_with_blocks(this_block, first_block, second_block);
 		}
 
-		conexpr void insert_item_slow(size_t pos, arr_block<T>& this_block, const T& item) {
+		conexpr void insert_item_slow(iterator<T> block, const T& item) {
+			size_t pos = block.pos;
+			auto& this_block = *block.block;
 			if (pos > this_block._size / 2) {
 				this_block.resize_front(this_block._size + 1);
 				size_t mov_to = this_block._size - 1;
@@ -686,7 +692,9 @@ namespace __list_array_impl{
 				this_block.arr_contain[pos] = item;
 			}
 		}
-		conexpr void insert_item_split(size_t pos, arr_block<T>& this_block, const T& item) {
+		conexpr void insert_item_split(iterator<T> block, const T& item) {
+			size_t pos = block.pos;
+			auto& this_block = *block.block;
 			size_t block_size = this_block._size;
 			size_t first_size = pos + 1;
 			arr_block<T>& first_block = *new arr_block<T>(nullptr, first_size + 1, nullptr);
@@ -699,7 +707,9 @@ namespace __list_array_impl{
 				second_block.arr_contain[i - first_size] = this_block.arr_contain[i];
 			swap_block_with_blocks(this_block, first_block, second_block);
 		}
-		conexpr void insert_item_slow(size_t pos, arr_block<T>& this_block, T&& item) {
+		conexpr void insert_item_slow(iterator<T> block, T&& item) {
+			size_t pos = block.pos;
+			auto& this_block = *block.block;
 			if (pos > this_block._size / 2) {
 				this_block.resize_front(this_block._size + 1);
 				size_t mov_to = this_block._size - 1;
@@ -715,7 +725,9 @@ namespace __list_array_impl{
 				this_block.arr_contain[pos] = std::move(item);
 			}
 		}
-		conexpr void insert_item_split(size_t pos, arr_block<T>& this_block, T&& item) {
+		conexpr void insert_item_split(iterator<T> block, T&& item) {
+			size_t pos = block.pos;
+			auto& this_block = *block.block;
 			size_t block_size = this_block._size;
 			size_t first_size = pos + 1;
 			arr_block<T>& first_block = *new arr_block<T>(nullptr, first_size + 1, nullptr);
@@ -729,21 +741,33 @@ namespace __list_array_impl{
 			swap_block_with_blocks(this_block, first_block, second_block);
 		}
 
-		conexpr void insert_block_split(size_t pos, arr_block<T>& this_block, const T* item, size_t item_size) {
+		conexpr void insert_block_split(iterator<T> block, const T* item, size_t item_size) {
+			size_t pos = block.pos;
+			arr_block<T>& this_block = *block.block;
 			size_t block_size = this_block._size;
-			arr_block<T>& first_block = *new arr_block<T>(nullptr, pos, nullptr);
-			arr_block<T>& second_block = *new arr_block<T>(nullptr, block_size - pos, nullptr);
 
-			for (size_t i = 0; i < pos; i++)
-				first_block.arr_contain[i] = this_block.arr_contain[i];
+			if(pos == 0){
+				auto insert = new arr_block<T>(this_block._prev, item_size, &this_block);
+				for(size_t i = 0; i < item_size; i++)
+					insert->arr_contain[i] = item[i];
+			}else if(pos == block_size){
+				auto insert = new arr_block<T>(&this_block, item_size, this_block.next_);
+				for(size_t i = 0; i < item_size; i++)
+					insert->arr_contain[i] = item[i];
+			}else{
+				arr_block<T>& first_block = *new arr_block<T>(nullptr, pos, nullptr);
+				arr_block<T>& second_block = *new arr_block<T>(nullptr, block_size - pos, nullptr);
+				for (size_t i = 0; i < pos; i++)
+					first_block.arr_contain[i] = this_block.arr_contain[i];
 
-			for (size_t i = pos; i < block_size; i++)
-				second_block.arr_contain[i - pos] = this_block.arr_contain[i];
+				for (size_t i = pos; i < block_size; i++)
+					second_block.arr_contain[i - pos] = this_block.arr_contain[i];
 
-			arr_block<T>& new_block_block = *new arr_block<T>(&first_block, item_size, &second_block);
-			for (size_t i = 0; i < item_size; i++)
-				new_block_block.arr_contain[i] = item[i];
-			swap_block_with_blocks(this_block, first_block, second_block);
+				arr_block<T>& new_block_block = *new arr_block<T>(&first_block, item_size, &second_block);
+				for (size_t i = 0; i < item_size; i++)
+					new_block_block.arr_contain[i] = item[i];
+				swap_block_with_blocks(this_block, first_block, second_block);
+			}
 			_size += item_size;
 		}
 
@@ -1015,10 +1039,10 @@ namespace __list_array_impl{
 				}
 			}
 			else
-				insert_block_split(pos, *get_iterator(pos).block, item, item_size);
+				insert_block_split(get_iterator(pos), item, item_size);
 		}
 		conexpr void insert_block(size_t pos, const arr_block<T>& item) {
-			insert_block_split(pos, *get_iterator(pos).block, item.arr_contain, item._size);
+			insert_block_split(get_iterator(pos), item.arr_contain, item._size);
 		}
 		conexpr void insert(size_t pos, const T& item) {
 			if (!_size) {
@@ -1037,9 +1061,9 @@ namespace __list_array_impl{
 				this_block[this_block._size - 1] = item;
 			}
 			else if (this_block._size <= 50000)
-				insert_item_slow(inter.pos, this_block, item);
+				insert_item_slow(inter, item);
 			else
-				insert_item_split(inter.pos, this_block, item);
+				insert_item_split(inter, item);
 			_size++;
 		}
 		conexpr void insert(size_t pos, T&& item) {
@@ -1059,9 +1083,9 @@ namespace __list_array_impl{
 				this_block[this_block._size - 1] = std::move(item);
 			}
 			else if (this_block._size <= 50000)
-				insert_item_slow(inter.pos, this_block, std::move(item));
+				insert_item_slow(inter, std::move(item));
 			else
-				insert_item_split(inter.pos, this_block, std::move(item));
+				insert_item_split(inter, std::move(item));
 			_size++;
 		}
 		conexpr void remove_item(size_t pos) {
@@ -1083,9 +1107,9 @@ namespace __list_array_impl{
 			else if (inter.pos == this_block._size - 1)
 				this_block.resize_front(this_block._size - 1);
 			else if (this_block._size <= 50000)
-				remove_item_slow(inter.pos, this_block);
+				remove_item_slow(inter);
 			else
-				remove_item_split(inter.pos, this_block);
+				remove_item_split(inter);
 			_size--;
 		}
 		conexpr size_t remove_items(size_t start_pos, size_t end_pos) {
