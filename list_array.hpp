@@ -67,9 +67,9 @@ namespace __list_array_impl{
 		using reference = T&;
 
 		conexpr iterator() { block = nullptr; pos = 0; }
-		conexpr iterator& operator=(const iterator& seter) {
-			block = seter.block;
-			pos = seter.pos;
+		conexpr iterator& operator=(const iterator& setter) {
+			block = setter.block;
+			pos = setter.pos;
 			return *this;
 		}
 		conexpr iterator(const iterator& copy) {
@@ -154,17 +154,17 @@ namespace __list_array_impl{
 		using reference = T&;
 
 		conexpr const_iterator() { block = nullptr; pos = 0; }
-		conexpr const_iterator& operator=(const const_iterator& seter) {
-			block = seter.block;
-			pos = seter.pos;
+		conexpr const_iterator& operator=(const const_iterator& setter) {
+			block = setter.block;
+			pos = setter.pos;
 			return *this;
 		}
 		conexpr const_iterator(const const_iterator& copy) {
 			*this = copy;
 		}
-		conexpr const_iterator& operator=(const iterator<T>& seter) {
-			block = seter.block;
-			pos = seter.pos;
+		conexpr const_iterator& operator=(const iterator<T>& setter) {
+			block = setter.block;
+			pos = setter.pos;
 			return *this;
 		}
 		conexpr const_iterator(const iterator<T>& copy) {
@@ -227,17 +227,17 @@ namespace __list_array_impl{
 		using reference = T&;
 
 		conexpr reverse_iterator() { block = nullptr; pos = 0; }
-		conexpr reverse_iterator& operator=(const iterator<T>& seter) {
-			block = seter.block;
-			pos = seter.pos;
+		conexpr reverse_iterator& operator=(const iterator<T>& setter) {
+			block = setter.block;
+			pos = setter.pos;
 			return *this;
 		}
 		conexpr reverse_iterator(const iterator<T>& copy) {
 			*this = copy;
 		}
-		conexpr reverse_iterator& operator=(const reverse_iterator& seter) {
-			block = seter.block;
-			pos = seter.pos;
+		conexpr reverse_iterator& operator=(const reverse_iterator& setter) {
+			block = setter.block;
+			pos = setter.pos;
 			return *this;
 		}
 		conexpr reverse_iterator(const reverse_iterator& copy) {
@@ -305,33 +305,33 @@ namespace __list_array_impl{
 		using reference = T&;
 
 		conexpr const_reverse_iterator() { block = nullptr; pos = 0; }
-		conexpr const_reverse_iterator& operator=(const const_iterator<T>& seter) {
-			block = seter.block;
-			pos = seter.pos;
+		conexpr const_reverse_iterator& operator=(const const_iterator<T>& setter) {
+			block = setter.block;
+			pos = setter.pos;
 			return *this;
 		}
 		conexpr const_reverse_iterator(const const_iterator<T>& copy) {
 			*this = copy;
 		}
-		conexpr const_reverse_iterator& operator=(const iterator<T>& seter) {
-			block = seter.block;
-			pos = seter.pos;
+		conexpr const_reverse_iterator& operator=(const iterator<T>& setter) {
+			block = setter.block;
+			pos = setter.pos;
 			return *this;
 		}
 		conexpr const_reverse_iterator(const iterator<T>& copy) {
 			*this = copy;
 		}
-		conexpr const_reverse_iterator& operator=(const reverse_iterator<T>& seter) {
-			block = seter.block;
-			pos = seter.pos;
+		conexpr const_reverse_iterator& operator=(const reverse_iterator<T>& setter) {
+			block = setter.block;
+			pos = setter.pos;
 			return *this;
 		}
 		conexpr const_reverse_iterator(const reverse_iterator<T>& copy) {
 			*this = copy;
 		}
-		conexpr const_reverse_iterator& operator=(const const_reverse_iterator& seter) {
-			block = seter.block;
-			pos = seter.pos;
+		conexpr const_reverse_iterator& operator=(const const_reverse_iterator& setter) {
+			block = setter.block;
+			pos = setter.pos;
 			return *this;
 		}
 		conexpr const_reverse_iterator(const const_reverse_iterator& copy) {
@@ -406,7 +406,7 @@ namespace __list_array_impl{
 			_prev = next_ = nullptr;
 			delete this;
 		}
-		conexpr static T* cxxresize(T* val, size_t old_size, size_t new_size) {
+		conexpr static T* cxx_resize(T* val, size_t old_size, size_t new_size) {
 			if (new_size == old_size)
 				return val;
 			T* new_val = new T[new_size];
@@ -574,7 +574,7 @@ namespace __list_array_impl{
 				return;
 			}
 			T* tmp = arr_contain;
-			arr_contain = cxxresize(arr_contain, _size, siz);
+			arr_contain = cxx_resize(arr_contain, _size, siz);
 			if (arr_contain == nullptr)
 			{
 				arr_contain = tmp;
@@ -587,30 +587,30 @@ namespace __list_array_impl{
 				good_bye_world();
 				return;
 			}
-			T* narr = new T[siz];
-			if (narr == nullptr)
+			T* new_arr = new T[siz];
+			if (new_arr == nullptr)
 				throw std::bad_alloc();
 
 			int64_t dif = _size - siz;
 			if (dif > 0) {
 				if constexpr (std::is_move_assignable<T>::value)
 					for (size_t i = 0; i < siz && i < _size; i++)
-						narr[i] = std::move(arr_contain[i + dif]);
+						new_arr[i] = std::move(arr_contain[i + dif]);
 				else
 					for (size_t i = 0; i < siz && i < _size; i++)
-						narr[i] = arr_contain[i + dif];
+						new_arr[i] = arr_contain[i + dif];
 			}
 			else {
 				dif *= -1;
 				if constexpr (std::is_move_assignable<T>::value)
 					for (size_t i = 0; i < siz && i < _size; i++)
-						narr[dif + i] = std::move(arr_contain[i]);
+						new_arr[dif + i] = std::move(arr_contain[i]);
 				else
 					for (size_t i = 0; i < siz && i < _size; i++)
-						narr[dif + i] = arr_contain[i];
+						new_arr[dif + i] = arr_contain[i];
 			}
 			delete[] arr_contain;
-			arr_contain = narr;
+			arr_contain = new_arr;
 			_size = siz;
 		}
 	};
@@ -944,14 +944,14 @@ namespace __list_array_impl{
 		conexpr void resize_begin(size_t new_size) {
 			size_t tsize = _size;
 			if (tsize >= new_size) {
-				for (size_t resizer = tsize - new_size; resizer > 0;) {
-					if (arr->_size > resizer) {
+				for (size_t resize_to = tsize - new_size; resize_to > 0;) {
+					if (arr->_size > resize_to) {
 						_size = new_size;
-						arr->resize_begin(arr->_size - resizer);
+						arr->resize_begin(arr->_size - resize_to);
 						return;
 					}
 					else {
-						resizer -= arr->_size;
+						resize_to -= arr->_size;
 						if (auto tmp = arr->next_) {
 							arr->next_->_prev = nullptr;
 							arr->next_ = nullptr;
@@ -984,14 +984,14 @@ namespace __list_array_impl{
 		conexpr void resize_front(size_t new_size) {
 			size_t tsize = _size;
 			if (tsize >= new_size) {
-				for (size_t resizer = tsize - new_size; resizer > 0;) {
-					if (arr_end->_size > resizer) {
+				for (size_t resize_to = tsize - new_size; resize_to > 0;) {
+					if (arr_end->_size > resize_to) {
 						_size = new_size;
-						arr_end->resize_front(arr_end->_size - resizer);
+						arr_end->resize_front(arr_end->_size - resize_to);
 						return;
 					}
 					else {
-						resizer -= arr_end->_size;
+						resize_to -= arr_end->_size;
 						if (auto tmp = arr_end->_prev) {
 							arr_end->_prev->next_ = nullptr;
 							arr_end->_prev = nullptr;
@@ -1113,23 +1113,23 @@ namespace __list_array_impl{
 			_size--;
 		}
 		conexpr size_t remove_items(size_t start_pos, size_t end_pos) {
-			iterator<T> interate = get_iterator(start_pos);
+			iterator<T> iterate = get_iterator(start_pos);
 			iterator<T> _end = get_iterator(end_pos);
 			size_t removed = 0;
 			size_t to_remove = end_pos - start_pos;
-			if (interate.block == _end.block) {
-				removed = _remove_items(interate.block, interate.pos, _end.pos);
+			if (iterate.block == _end.block) {
+				removed = _remove_items(iterate.block, iterate.pos, _end.pos);
 				_size -= removed;
 				return removed;
 			}
 			arr_block<T>* curr_block;
 			for(; removed < to_remove;){
-				curr_block = interate.block;
-				if(interate.pos != 0 || interate.block->_size > to_remove - removed){
-					removed += _remove_items(interate.block, interate.pos, interate.block->_size - interate.pos);
+				curr_block = iterate.block;
+				if(iterate.pos != 0 || iterate.block->_size > to_remove - removed){
+					removed += _remove_items(iterate.block, iterate.pos, iterate.block->_size - iterate.pos);
 				}
 				else {
-					interate._nextBlock();
+					iterate._nextBlock();
 					removed += curr_block->_size;
 					if (arr == curr_block)
 						arr = curr_block->next_;
@@ -1145,20 +1145,20 @@ namespace __list_array_impl{
 		conexpr size_t remove_if(_Fn func, size_t start, size_t end) {
 			if (!_size)
 				return 0;
-			iterator<T> interate = get_iterator(start);
+			iterator<T> iterate = get_iterator(start);
 			iterator<T> _end = get_iterator(end);
 			size_t removed = 0;
-			if (interate.block == _end.block) {
-				removed = _remove_if(interate, func, interate.pos, _end.pos);
+			if (iterate.block == _end.block) {
+				removed = _remove_if(iterate, func, iterate.pos, _end.pos);
 				_size -= removed;
 				return removed;
 			}
 
-			removed += _remove_if(interate, func, interate.pos, interate.block->_size);
+			removed += _remove_if(iterate, func, iterate.pos, iterate.block->_size);
 			for (;;) {
-				if (!interate._nextBlock())
+				if (!iterate._nextBlock())
 					break;
-				removed += _remove_if(interate, func, 0, interate.block->_size);
+				removed += _remove_if(iterate, func, 0, iterate.block->_size);
 			}
 
 			_size -= removed;
@@ -1341,7 +1341,7 @@ namespace __list_array_impl{
 			reserved_end = copy.reserved_end;
 			return *this;
 		}
-		conexpr size_t alocated() const {
+		conexpr size_t allocated() const {
 			return arr._size * sizeof(T);
 		}
 		conexpr size_t reserved() const {
@@ -1402,24 +1402,24 @@ namespace __list_array_impl{
 			reserved_begin += reserve_size;
 			arr.resize_begin(reserved_begin + _size + reserved_end);
 		}
-		conexpr void push_front(const T& copyer) {
+		conexpr void push_front(const T& copy_to) {
 			if (reserved_begin) {
-				arr[--reserved_begin] = copyer;
+				arr[--reserved_begin] = copy_to;
 				_size++;
 			}
 			else {
 				reserve_push_front(_size + 1);
-				push_front(copyer);
+				push_front(copy_to);
 			}
 		}
-		conexpr void push_front(T&& copyer) {
+		conexpr void push_front(T&& copy_to) {
 			if (reserved_begin) {
-				arr[--reserved_begin] = copyer;
+				arr[--reserved_begin] = copy_to;
 				_size++;
 			}
 			else {
 				reserve_push_front(_size + 1);
-				push_front(std::move(copyer));
+				push_front(std::move(copy_to));
 			}
 		}
 
@@ -1428,24 +1428,24 @@ namespace __list_array_impl{
 			reserved_end += reserve_size;
 			arr.resize_front(reserved_begin + _size + reserved_end);
 		}
-		conexpr void push_back(const T& copyer) {
+		conexpr void push_back(const T& copy_to) {
 			if (reserved_end) {
-				arr[reserved_begin + _size++] = copyer;
+				arr[reserved_begin + _size++] = copy_to;
 				--reserved_end;
 			}
 			else {
 				reserve_push_back(_size + 1);
-				push_back(copyer);
+				push_back(copy_to);
 			}
 		}
-		conexpr void push_back(T&& copyer) {
+		conexpr void push_back(T&& copy_to) {
 			if (reserved_end) {
-				arr[reserved_begin + _size++] = std::move(copyer);
+				arr[reserved_begin + _size++] = std::move(copy_to);
 				--reserved_end;
 			}
 			else {
 				reserve_push_back(_size + 1);
-				push_back(std::move(copyer));
+				push_back(std::move(copy_to));
 			}
 		}
 
@@ -1607,7 +1607,7 @@ namespace __list_array_impl{
 			if (total_blocks > _size)
 				throw std::out_of_range("blocks count more than elements count");
 			if (total_blocks == 0)
-				throw std::out_of_range("blocks count cannont be 0");
+				throw std::out_of_range("blocks count cannot be 0");
 			if (total_blocks == 1)
 				return commit();
 			list_array<T> tmp;
@@ -1688,44 +1688,44 @@ namespace __list_array_impl{
 		conexpr bool contains(const list_array<T>& value, size_t value_start, size_t value_end, size_t start, size_t end) const req(std::equality_comparable<T>) {
 			if (value_end > value._size)
 				throw std::out_of_range("value_end is out of value size limit");
-			auto vbeg = value.get_iterator(value_start);
-			auto ibeg = vbeg;
+			auto v_beg = value.get_iterator(value_start);
+			auto i_beg = v_beg;
 			size_t i = value_start;
 			for (const T& it : range(start, end)) {
-				if (it == *ibeg) {
+				if (it == *i_beg) {
 					++i;
 					if (i == value_end)
 						return true;
-					++ibeg;
+					++i_beg;
 				}
 				else {
 					i = value_start;
-					ibeg = vbeg;
+					i_beg = v_beg;
 				}
 			}
 			return false;
 		}
 
 		template<class _Fn>
-		conexpr bool contains_one(_Fn check_functon) const {
-			return contains_one(check_functon, 0, _size);
+		conexpr bool contains_one(_Fn check_function) const {
+			return contains_one(check_function, 0, _size);
 		}
 		template<class _Fn>
-		conexpr size_t contains_multiply(_Fn check_functon) const {
-			return contains_multiply(check_functon, 0, _size);
+		conexpr size_t contains_multiply(_Fn check_function) const {
+			return contains_multiply(check_function, 0, _size);
 		}
 		template<class _Fn>
-		conexpr bool contains_one(_Fn check_functon, size_t start, size_t end) const {
+		conexpr bool contains_one(_Fn check_function, size_t start, size_t end) const {
 			for (const T& it : range(start, end))
-				if (check_functon(it))
+				if (check_function(it))
 					return true;
 			return false;
 		}
 		template<class _Fn>
-		conexpr size_t contains_multiply(_Fn check_functon, size_t start, size_t end) const {
+		conexpr size_t contains_multiply(_Fn check_function, size_t start, size_t end) const {
 			size_t i = 0;
 			for (const T& it : range(start, end))
-				if (check_functon(it))
+				if (check_function(it))
 					++i;
 			return i;
 		}
@@ -1812,16 +1812,16 @@ namespace __list_array_impl{
 			}
 			return npos;
 		}
-		conexpr size_t find(const T* vbeg, const T* vend) const req(std::equality_comparable<T>) {
-			return find(vbeg, vend, 0);
+		conexpr size_t find(const T* v_beg, const T* vend) const req(std::equality_comparable<T>) {
+			return find(v_beg, vend, 0);
 		}
-		conexpr size_t find(const T* vbeg, const T* vend, size_t continue_from) const req(std::equality_comparable<T>) {
+		conexpr size_t find(const T* v_beg, const T* vend, size_t continue_from) const req(std::equality_comparable<T>) {
 			size_t i = 0;
 			size_t eq = 0;
-			size_t dif = vend - vbeg;
+			size_t dif = vend - v_beg;
 
 			for (auto& it : range(continue_from, _size)) {
-				if (vbeg[eq] == it)
+				if (v_beg[eq] == it)
 					++eq;
 				else
 					eq = 0;
@@ -1847,20 +1847,20 @@ namespace __list_array_impl{
 				std::swap(value_end, value_start);
 				if (value_end > value._size)
 					throw std::out_of_range("value_end is out of value size limit");
-				auto vbeg = const_reverse_iterator(value.get_iterator(value_end));
-				auto ibeg = vbeg;
+				auto v_beg = const_reverse_iterator(value.get_iterator(value_end));
+				auto i_beg = v_beg;
 				size_t i = value_start;
 				size_t res = continue_from;
 				for (const T& it : range(continue_from, end)) {
-					if (it == *ibeg) {
+					if (it == *i_beg) {
 						++i;
 						if (i == value_end)
 							return res;
-						++ibeg;
+						++i_beg;
 					}
 					else {
 						i = value_start;
-						ibeg = vbeg;
+						i_beg = v_beg;
 					}
 					++res;
 				}
@@ -1868,20 +1868,20 @@ namespace __list_array_impl{
 			else {
 				if (value_end > value._size)
 					throw std::out_of_range("value_end is out of value size limit");
-				auto vbeg = value.get_iterator(value_start);
-				auto ibeg = vbeg;
+				auto v_beg = value.get_iterator(value_start);
+				auto i_beg = v_beg;
 				size_t i = value_start;
 				size_t res = continue_from;
 				for (const T& it : range(continue_from, end)) {
-					if (it == *ibeg) {
+					if (it == *i_beg) {
 						++i;
 						if (i == value_end)
 							return res;
-						++ibeg;
+						++i_beg;
 					}
 					else {
 						i = value_start;
-						ibeg = vbeg;
+						i_beg = v_beg;
 					}
 					++res;
 				}
@@ -1901,16 +1901,16 @@ namespace __list_array_impl{
 			}
 			return npos;
 		}
-		conexpr size_t findr(const T* vbeg, const T* vend) const req(std::equality_comparable<T>) {
-			return findr(vbeg, vend, _size);
+		conexpr size_t findr(const T* v_beg, const T* vend) const req(std::equality_comparable<T>) {
+			return findr(v_beg, vend, _size);
 		}
-		conexpr size_t findr(const T* vbeg, const T* vend, size_t continue_from) const req(std::equality_comparable<T>) {
+		conexpr size_t findr(const T* v_beg, const T* vend, size_t continue_from) const req(std::equality_comparable<T>) {
 			size_t i = 0;
 			size_t eq = 0;
-			size_t dif = vend - vbeg;
+			size_t dif = vend - v_beg;
 
 			for (auto& it : reverse_range(0, continue_from)) {
-				if (vbeg[eq] == it)
+				if (v_beg[eq] == it)
 					++eq;
 				else
 					eq = 0;
@@ -1935,20 +1935,20 @@ namespace __list_array_impl{
 			if (value_start > value_end) {
 				if (value_end > value._size)
 					throw std::out_of_range("value_end is out of value size limit");
-				auto vbeg = const_reverse_iterator(value.get_iterator(value_end));
-				auto ibeg = vbeg;
+				auto v_beg = const_reverse_iterator(value.get_iterator(value_end));
+				auto i_beg = v_beg;
 				size_t i = value_start;
 				size_t res = continue_from;
 				for (const T& it : reverse_range(end, continue_from)) {
-					if (it == *ibeg) {
+					if (it == *i_beg) {
 						++i;
 						if (i == value_end)
 							return res;
-						++ibeg;
+						++i_beg;
 					}
 					else {
 						i = value_start;
-						ibeg = vbeg;
+						i_beg = v_beg;
 					}
 					++res;
 				}
@@ -1956,20 +1956,20 @@ namespace __list_array_impl{
 			else {
 				if (value_end > value._size)
 					throw std::out_of_range("value_end is out of value size limit");
-				auto vbeg = value.get_iterator(value_start);
-				auto ibeg = vbeg;
+				auto v_beg = value.get_iterator(value_start);
+				auto i_beg = v_beg;
 				size_t i = value_start;
 				size_t res = continue_from;
 				for (const T& it : reverse_range(end, continue_from)) {
-					if (it == *ibeg) {
+					if (it == *i_beg) {
 						++i;
 						if (i == value_end)
 							return res;
-						++ibeg;
+						++i_beg;
 					}
 					else {
 						i = value_start;
-						ibeg = vbeg;
+						i_beg = v_beg;
 					}
 					++res;
 				}
@@ -2017,21 +2017,21 @@ namespace __list_array_impl{
 		}
 		conexpr list_array<T>& sort() {
 			if constexpr (std::is_unsigned<T>::value) {
-				const T& mival = mmin();
-				size_t dif = mmax() - mival + 1;
+				const T& min_val = mmin();
+				size_t dif = mmax() - min_val + 1;
 				list_array<size_t> count_arr(dif);
 				list_array<T> result(_size);
 				{
 					size_t i = 0;
 					for (const T& it : *this)
-						count_arr[it - mival] += 1;
+						count_arr[it - min_val] += 1;
 				}
 				for (size_t i = 1; i < dif; i++)
 					count_arr[i] += count_arr[i - 1];
 				{
 					for (const T& it : reverse()) {
-						result[count_arr[it - mival] - 1] = it;
-						count_arr[it - mival] -= 1;
+						result[count_arr[it - min_val] - 1] = it;
+						count_arr[it - min_val] -= 1;
 					}
 				}
 				swap(result);
@@ -2041,21 +2041,21 @@ namespace __list_array_impl{
 					constexpr size_t to_shift = sizeof(T) * 4;
 					return size_t((SIZE_MAX >> to_shift) + to);
 				};
-				size_t mival = normalize(mmin());
-				size_t dif = normalize(mmax()) - mival + 1;
+				size_t min_val = normalize(mmin());
+				size_t dif = normalize(mmax()) - min_val + 1;
 				list_array<size_t> count_arr(dif, 0);
 				list_array<T> result(_size);
 				{
 					size_t i = 0;
 					for (const T& it : *this)
-						count_arr[normalize(it) - mival] += 1;
+						count_arr[normalize(it) - min_val] += 1;
 				}
 				for (size_t i = 1; i < dif; i++)
 					count_arr[i] += count_arr[i - 1];
 				{
 					for (const T& it : reverse()) {
-						result[count_arr[normalize(it) - mival] - 1] = it;
-						count_arr[normalize(it) - mival] -= 1;
+						result[count_arr[normalize(it) - min_val] - 1] = it;
+						count_arr[normalize(it) - min_val] -= 1;
 					}
 				}
 				swap(result);
@@ -2065,9 +2065,9 @@ namespace __list_array_impl{
 				size_t curr_M_size = _size / 2 + 1;
 				T* L = new T[_size / 2 + 1];
 				T* M = new T[_size / 2 + 1];
-				auto fix_size = [&L, &M, &curr_L_size, &curr_M_size](size_t start, size_t mindle, size_t end) {
-					size_t l = mindle - start + 1;
-					size_t m = end - mindle + 1;
+				auto fix_size = [&L, &M, &curr_L_size, &curr_M_size](size_t start, size_t middle, size_t end) {
+					size_t l = middle - start + 1;
+					size_t m = end - middle + 1;
 					if (curr_L_size < l) {
 						delete[] L;
 						L = new T[l];
@@ -2079,13 +2079,13 @@ namespace __list_array_impl{
 						curr_M_size = m;
 					}
 				};
-				auto merge = [&](size_t start, size_t mindle, size_t end) {
-					size_t n1 = mindle - start;
-					size_t n2 = end - mindle;
+				auto merge = [&](size_t start, size_t middle, size_t end) {
+					size_t n1 = middle - start;
+					size_t n2 = end - middle;
 					if (curr_L_size < n1 || curr_M_size < n2)
-						fix_size(start, mindle, end);
+						fix_size(start, middle, end);
 					get_iterator(start)._fast_load(L, n1);
-					get_iterator(mindle)._fast_load(M, n2);
+					get_iterator(middle)._fast_load(M, n2);
 					size_t i = 0, j = 0, k = start;
 					for (T& it : range(start, end)) {
 						if (i < n1 && j < n2)
@@ -2135,9 +2135,9 @@ namespace __list_array_impl{
 			size_t curr_M_size = _size / 2 + 1;
 			T* L = new T[_size / 2 + 1];
 			T* M = new T[_size / 2 + 1];
-			auto fix_size = [&L, &M, &curr_L_size, &curr_M_size](size_t start, size_t mindle, size_t end) {
-				size_t l = mindle - start + 1;
-				size_t m = end - mindle + 1;
+			auto fix_size = [&L, &M, &curr_L_size, &curr_M_size](size_t start, size_t middle, size_t end) {
+				size_t l = middle - start + 1;
+				size_t m = end - middle + 1;
 				if (curr_L_size < l) {
 					delete[] L;
 					L = new T[l];
@@ -2149,13 +2149,13 @@ namespace __list_array_impl{
 					curr_M_size = m;
 				}
 			};
-			auto merge = [&](size_t start, size_t mindle, size_t end) {
-				size_t n1 = mindle - start;
-				size_t n2 = end - mindle;
+			auto merge = [&](size_t start, size_t middle, size_t end) {
+				size_t n1 = middle - start;
+				size_t n2 = end - middle;
 				if (curr_L_size < n1 || curr_M_size < n2)
-					fix_size(start, mindle, end);
+					fix_size(start, middle, end);
 				get_iterator(start)._fast_load(L, n1);
-				get_iterator(mindle)._fast_load(M, n2);
+				get_iterator(middle)._fast_load(M, n2);
 				size_t i = 0, j = 0, k = start;
 				for (T& it : range(start, end)) {
 					if (i < n1 && j < n2)
@@ -2932,6 +2932,11 @@ namespace __list_array_impl{
 		conexpr T* data() {
 			if (blocks_more(1))
 				commit();
+			return arr.arr->arr_contain;
+		}
+		conexpr const T* data() const {
+			if (blocks_more(1))
+				throw std::runtime_error("can't get const raw pointer when blocks more than 1");
 			return arr.arr->arr_contain;
 		}
 	};
