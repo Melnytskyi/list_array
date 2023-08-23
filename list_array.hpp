@@ -1579,10 +1579,10 @@ namespace __list_array_impl{
 			insert(i, std::move(item));
 		}
 
-		conexpr void push_front(T* array, size_t arr_size) {
+		conexpr void push_front(const T* array, size_t arr_size) {
 			insert(0, array, arr_size);
 		}
-		conexpr void push_back(T* array, size_t arr_size) {
+		conexpr void push_back(const T* array, size_t arr_size) {
 			insert(_size, array, arr_size);
 		}
 		conexpr void push_front(const list_array<T>& to_push) {
@@ -2613,15 +2613,15 @@ namespace __list_array_impl{
 
 
 		template<class _FN>
-		conexpr void join(T* insert_items,size_t items_count, _FN where_join) {
+		conexpr void join(const T* insert_items,size_t items_count, _FN where_join) {
 			operator=(join_copy(insert_items, items_count, 0, _size, where_join));
 		}
 		template<class _FN>
-		conexpr list_array<T> join_copy(T* insert_items, size_t items_count, _FN where_join) const {
+		conexpr list_array<T> join_copy(const T* insert_items, size_t items_count, _FN where_join) const {
 			return join_copy(insert_items, items_count, 0, _size, where_join);
 		}
 		template<class _FN>
-		conexpr list_array<T> join_copy(T* insert_items, size_t items_count, size_t start_pos, size_t end_pos, _FN where_join) const {
+		conexpr list_array<T> join_copy(const T* insert_items, size_t items_count, size_t start_pos, size_t end_pos, _FN where_join) const {
 			list_array<T> res;
 			res.reserve_push_back(_size * 2);
 			if (start_pos > end_pos) {
@@ -2707,15 +2707,15 @@ namespace __list_array_impl{
 
 
 		template<class _FN>
-		conexpr void join(T* insert_items, size_t items_count) {
+		conexpr void join(const T* insert_items, size_t items_count) {
 			operator=(join_copy(insert_items, items_count, 0, _size));
 		}
 		template<class _FN>
-		conexpr list_array<T> join_copy(T* insert_items, size_t items_count) const {
+		conexpr list_array<T> join_copy(const T* insert_items, size_t items_count) const {
 			return join_copy(insert_items, items_count, 0, _size);
 		}
 		template<class _FN>
-		conexpr list_array<T> join_copy(T* insert_items, size_t items_count, size_t start_pos, size_t end_pos) const {
+		conexpr list_array<T> join_copy(const T* insert_items, size_t items_count, size_t start_pos, size_t end_pos) const {
 			list_array<T> res;
 			if (start_pos > end_pos) {
 				std::swap(start_pos, end_pos);
