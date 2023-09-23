@@ -2751,17 +2751,17 @@ namespace __list_array_impl{
 				std::swap(start_pos, end_pos);
 				if (end_pos > _size)
 					throw std::out_of_range("end_pos out of size limit");
-				res.reserve_push_back(start_pos - end_pos);
-				for (auto& i : reverse_range(start_pos, end_pos))
-					if (check_fn(i))
+                res.reserve_push_back(end_pos - start_pos);
+                for (auto& i : reverse_range(start_pos, end_pos))
+                    if (check_fn(i))
 						res.push_back(i);
 			}
 			else {
 				if (end_pos > _size)
 					throw std::out_of_range("end_pos out of size limit");
-				res.reserve_push_back(start_pos - end_pos);
-				for (auto& i : range(start_pos, end_pos))
-					if (check_fn(i))
+                res.reserve_push_back(end_pos - start_pos);
+                for (auto& i : range(start_pos, end_pos))
+                    if (check_fn(i))
 						res.push_back(i);
 			}
 			res.shrink_to_fit();
@@ -2778,18 +2778,18 @@ namespace __list_array_impl{
 				std::swap(start_pos, end_pos);
 				if (end_pos > _size)
 					throw std::out_of_range("end_pos out of size limit");
-				res.reserve_push_back(start_pos - end_pos);
-				size_t pos = end_pos;
-				for (auto& i : reverse_range(start_pos, end_pos))
+                res.reserve_push_back(end_pos - start_pos);
+                size_t pos = end_pos;
+                for (auto& i : reverse_range(start_pos, end_pos))
 					if (check_fn(i, pos--))
 						res.push_back(i);
 			}
 			else {
 				if (end_pos > _size)
 					throw std::out_of_range("end_pos out of size limit");
-				res.reserve_push_back(start_pos - end_pos);
-				size_t pos = start_pos;
-				for (auto& i : range(start_pos, end_pos))
+                res.reserve_push_back(end_pos - start_pos);
+                size_t pos = start_pos;
+                for (auto& i : range(start_pos, end_pos))
 					if (check_fn(i, pos--))
 						res.push_back(i);
 			}
@@ -2808,17 +2808,17 @@ namespace __list_array_impl{
 				std::swap(start_pos, end_pos);
 				if (end_pos > _size)
 					throw std::out_of_range("end_pos out of size limit");
-				res.reserve_push_back(start_pos - end_pos);
-				for (auto& i : reverse_range(start_pos, end_pos))
-					res.push_back(iterate_fn(i));
-			}
+                res.reserve_push_back(end_pos - start_pos);
+                for (auto& i : reverse_range(start_pos, end_pos))
+                    res.push_back(iterate_fn(i));
+            }
 			else {
 				if (end_pos > _size)
 					throw std::out_of_range("end_pos out of size limit");
-				res.reserve_push_back(start_pos - end_pos);
-				for (auto& i : range(start_pos, end_pos))
-					res.push_back(iterate_fn(i));
-			}
+                res.reserve_push_back(end_pos - start_pos);
+                for (auto& i : range(start_pos, end_pos))
+                    res.push_back(iterate_fn(i));
+            }
 			return res;
 		}
 		template<class ConvertTo, class _Fn>
