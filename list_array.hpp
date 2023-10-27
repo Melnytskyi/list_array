@@ -1747,11 +1747,34 @@ namespace __list_array_impl{
 			size_t res = arr.remove_if(check_function, reserved_begin + start, reserved_begin + end);
 			_size -= res;
 			return res;
-		}
+        }
 
-		template<class _Fn>
-		conexpr size_t remove_same(const T& val, size_t start, size_t end, _Fn comparer = [](const T& f, const T& s) { return f == s; }) {
-			if (start > end)
+        template <class _Fn>
+        conexpr bool remove_one(_Fn check_function) {
+            size_t item = find_it(check_function);
+            if(item == npos)
+				return false;
+			remove(item);
+			return true;
+        }
+
+        template <class _Fn>
+        conexpr bool remove_one(_Fn check_function, size_t start, size_t end) {
+            size_t item = find_it(check_function, start, end);
+            if (item == npos)
+                return false;
+            remove(item);
+            return true;
+        }
+
+        template <class _Fn>
+        conexpr size_t remove_same(
+            const T& val,
+            size_t start,
+            size_t end,
+            _Fn comparer = [](const T& f, const T& s) { return f == s; }
+        ) {
+            if (start > end)
 				std::swap(start, end);
 			if (end > _size)
 				throw std::out_of_range("end value out of size limit");
@@ -1760,8 +1783,8 @@ namespace __list_array_impl{
 			size_t res = arr.remove_if([&comparer, &val](const T& cval) { return comparer(val, cval); }, reserved_begin + start, reserved_begin + end);
 			_size -= res;
 			return res;
-		}
-		template<class _Fn>
+        }
+        template<class _Fn>
 		conexpr size_t remove_same(const T& val, _Fn comparer = [](const T& f, const T& s) { return f == s; }) {
 			size_t res = arr.remove_if([&comparer, &val](const T& cval) { return comparer(val, cval); }, reserved_begin, reserved_begin + _size);
 			_size -= res;
@@ -1975,44 +1998,57 @@ namespace __list_array_impl{
 				}
 			}
 			return npos;
-		}
+        }
 
-		template<class _Fn>
-		conexpr size_t find_it(_Fn find_func) const {
-			return find_it(find_func, 0);
-		}
-		template<class _Fn>
-		conexpr size_t find_it(_Fn find_func, size_t continue_from) const {
-			size_t i = 0;
-			for (auto& it : range(continue_from, _size)) {
-				if (find_func(it))
-					return i;
-				++i;
-			}
-			return npos;
-		}
+        template <class _Fn>
+        conexpr size_t find_it(_Fn find_func) const {
+            return find_it(find_func, 0, _size);
+        }
 
-		template<class _Fn>
-		conexpr size_t findr_it(_Fn find_func) const {
-			return findr_it(find_func, _size);
-		}
-		template<class _Fn>
+        template <class _Fn>
+        conexpr size_t find_it(_Fn find_func, size_t continue_from) const {
+            return find_it(find_func, continue_from, _size);
+        }
+
+        template <class _Fn>
+        conexpr size_t find_it(_Fn find_func, size_t continue_from, size_t end) const {
+            if (continue_from > end)
+                return findr_it(find_func, end, continue_from);
+            size_t i = 0;
+            for (const T& it : range(continue_from, end)) {
+                if (find_func(it))
+                    return i;
+                ++i;
+            }
+            return npos;
+        }
+
+        template <class _Fn>
+        conexpr size_t findr_it(_Fn find_func) const {
+            return findr_it(find_func, 0, _size);
+        }
+        template<class _Fn>
 		conexpr size_t findr_it(_Fn find_func, size_t continue_from) const {
-			size_t i = 0;
-			for (T& it : reverse_range(0, continue_from)) {
-				if (find_func(it))
-					return i;
-				++i;
-			}
-			return npos;
-		}
+            return findr_it(find_func, continue_from, _size);
+        }
 
-		conexpr void clear() {
-			arr.clear();
+        template <class _Fn>
+        conexpr size_t findr_it(_Fn find_func, size_t continue_from, size_t end) const {
+            size_t i = 0;
+            for (const T& it : reverse_range(end, continue_from)) {
+                if (find_func(it))
+                    return i;
+                ++i;
+            }
+            return npos;
+        }
+
+        conexpr void clear() {
+            arr.clear();
 			_size = reserved_end = reserved_begin = 0;
-		}
+        }
 
-		conexpr list_array<T> sort_copy() const {
+        conexpr list_array<T> sort_copy() const {
 			return list_array<T>(*this).sort();
 		}
 		conexpr list_array<T>& sort() {
