@@ -41,7 +41,7 @@ namespace __list_array_impl {
         conexpr bool _nextBlock() {
             block = block ? block->next_ : block;
             pos = 0;
-            return block && (block ? block->next_ : block);
+            return block && (block ? block->next_ : nullptr);
         }
 
         conexpr void _fast_load(T* arr, size_t arr_size) {
@@ -516,7 +516,7 @@ namespace __list_array_impl {
         }
 
     public:
-        conexpr arr_block() {}
+        conexpr arr_block() = default;
 
         conexpr arr_block(const arr_block& copy) {
             operator=(copy);
@@ -556,6 +556,8 @@ namespace __list_array_impl {
         }
 
         conexpr arr_block& operator=(const arr_block& copy) {
+            if (this == &copy)
+                return *this;
             if (arr_contain)
                 delete[] arr_contain;
             _size = copy._size;
@@ -566,6 +568,8 @@ namespace __list_array_impl {
         }
 
         conexpr arr_block& operator=(arr_block&& move) noexcept {
+            if (this == &move)
+                return *this;
             arr_contain = move.arr_contain;
             _prev = move._prev;
             next_ = move.next_;
@@ -683,9 +687,6 @@ namespace __list_array_impl {
                 return;
             }
             T* new_arr = new T[siz];
-            if (new_arr == nullptr)
-                throw std::bad_alloc();
-
             int64_t dif = _size - siz;
             if (dif > 0) {
                 if constexpr (std::is_move_assignable<T>::value)
@@ -945,7 +946,7 @@ namespace __list_array_impl {
             arr = arr_end = nullptr;
         }
 
-        conexpr dynamic_arr() {}
+        conexpr dynamic_arr() = default;
 
         conexpr dynamic_arr(const dynamic_arr& copy) {
             operator=(copy);
@@ -956,6 +957,8 @@ namespace __list_array_impl {
         }
 
         conexpr dynamic_arr& operator=(dynamic_arr&& move) noexcept {
+            if (this == &move)
+                return *this;
             clear();
             arr = move.arr;
             arr_end = move.arr_end;
@@ -965,6 +968,8 @@ namespace __list_array_impl {
         }
 
         conexpr dynamic_arr& operator=(const dynamic_arr& copy) {
+            if (this == &copy)
+                return *this;
             clear();
             if (!copy._size)
                 return *this;
@@ -1494,7 +1499,7 @@ namespace __list_array_impl {
             }
         };
 
-        conexpr list_array() {}
+        conexpr list_array() = default;
 
         conexpr list_array(const std::initializer_list<T>& vals) {
             resize(vals.size());
