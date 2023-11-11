@@ -1044,7 +1044,7 @@ namespace __list_array_impl {
         conexpr void resize_begin(size_t new_size) {
             size_t tsize = _size;
             if (tsize >= new_size) {
-                if (arr_end) {
+                if (!arr_end) {
                     if (arr) {
                         arr_end = arr;
                         while (arr_end->_prev)
@@ -1094,7 +1094,7 @@ namespace __list_array_impl {
         conexpr void resize_front(size_t new_size) {
             size_t tsize = _size;
             if (tsize >= new_size) {
-                if (arr_end) {
+                if (!arr_end) {
                     if (arr) {
                         arr_end = arr;
                         while (arr_end->_prev)
