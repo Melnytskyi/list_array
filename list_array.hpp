@@ -835,10 +835,10 @@ namespace __list_array_impl {
 
         conexpr void insert_block_split(iterator<T> block, const T* item, size_t item_size) {
             size_t pos = block.pos;
+            if (block.block == nullptr)
+                throw std::out_of_range("list_array index out of range");
             arr_block<T>& this_block = *block.block;
             size_t block_size = this_block._size;
-            if (this_block == nullptr)
-                throw std::out_of_range("list_array index out of range");
             if (pos == 0) {
                 auto insert = new arr_block<T>(this_block._prev, item_size, &this_block);
                 for (size_t i = 0; i < item_size; i++)
