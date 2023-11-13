@@ -41,7 +41,7 @@ namespace __list_array_impl {
         conexpr bool _nextBlock() {
             block = block ? block->next_ : block;
             pos = 0;
-            return block && (block ? block->next_ : nullptr);
+            return block && bool(block ? block->next_ : nullptr);
         }
 
         conexpr void _fast_load(T* arr, size_t arr_size) {
@@ -952,11 +952,11 @@ namespace __list_array_impl {
             operator=(copy);
         }
 
-        conexpr dynamic_arr(dynamic_arr&& move) noexcept {
+        conexpr dynamic_arr(dynamic_arr&& move) noexcept(false) {
             operator=(std::move(move));
         }
 
-        conexpr dynamic_arr& operator=(dynamic_arr&& move) noexcept {
+        conexpr dynamic_arr& operator=(dynamic_arr&& move) noexcept(false) {
             if (this == &move)
                 return *this;
             clear();
@@ -1337,6 +1337,12 @@ namespace __list_array_impl {
                 _end = copy._end;
             }
 
+            conexpr range_provider& operator=(const range_provider& copy) {
+                reinterpret_cast<list_array<T>*&>(&ln) = reinterpret_cast<list_array<T>*&>(&copy.ln);
+                _start = copy._start;
+                _end = copy._end;
+            }
+
             conexpr iterator begin() {
                 return ln.get_iterator(_start);
             }
@@ -1396,6 +1402,12 @@ namespace __list_array_impl {
                 _end = copy._end;
             }
 
+            conexpr const_range_provider& operator=(const const_range_provider& copy) {
+                reinterpret_cast<list_array<T>*&>(&ln) = reinterpret_cast<list_array<T>*&>(&copy.ln);
+                _start = copy._start;
+                _end = copy._end;
+            }
+
             conexpr const_iterator begin() const {
                 return ln.get_iterator(_start);
             }
@@ -1435,6 +1447,11 @@ namespace __list_array_impl {
 
             conexpr reverse_provider(const reverse_provider& copy) {
                 _begin = copy._begin;
+                _end = copy._end;
+            }
+
+            conexpr reverse_provider& operator=(const reverse_provider& copy) {
+                _begin = copy._start;
                 _end = copy._end;
             }
 
@@ -1487,6 +1504,11 @@ namespace __list_array_impl {
 
             conexpr const_reverse_provider(const const_reverse_provider& copy) {
                 _begin = copy._begin;
+                _end = copy._end;
+            }
+
+            conexpr const_reverse_provider& operator=(const const_reverse_provider& copy) {
+                _begin = copy._start;
                 _end = copy._end;
             }
 
@@ -2338,7 +2360,7 @@ namespace __list_array_impl {
                     }
                 }
                 swap(result);
-            } else if constexpr (std::is_signed<T>::value && sizeof(T) <= sizeof(size_t)) {
+            } else if constexpr (std::is_signed_v<T> && sizeof(T) <= sizeof(size_t) && !std::is_floating_point_v<T>) {
                 auto normalize = [](const T& to) {
                     constexpr size_t to_shift = sizeof(T) * 4;
                     return size_t((SIZE_MAX >> to_shift) + to);
