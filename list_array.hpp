@@ -1341,6 +1341,7 @@ namespace __list_array_impl {
                 reinterpret_cast<list_array<T>*&>(&ln) = reinterpret_cast<list_array<T>*&>(&copy.ln);
                 _start = copy._start;
                 _end = copy._end;
+                return *this;
             }
 
             conexpr iterator begin() {
@@ -1406,6 +1407,7 @@ namespace __list_array_impl {
                 reinterpret_cast<list_array<T>*&>(&ln) = reinterpret_cast<list_array<T>*&>(&copy.ln);
                 _start = copy._start;
                 _end = copy._end;
+                return *this;
             }
 
             conexpr const_iterator begin() const {
@@ -1453,6 +1455,7 @@ namespace __list_array_impl {
             conexpr reverse_provider& operator=(const reverse_provider& copy) {
                 _begin = copy._start;
                 _end = copy._end;
+                return *this;
             }
 
             conexpr reverse_iterator begin() {
@@ -1510,6 +1513,7 @@ namespace __list_array_impl {
             conexpr const_reverse_provider& operator=(const const_reverse_provider& copy) {
                 _begin = copy._start;
                 _end = copy._end;
+                return *this;
             }
 
             conexpr const_reverse_iterator begin() const {
