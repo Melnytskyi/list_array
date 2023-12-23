@@ -1307,6 +1307,40 @@ namespace __list_array_impl {
         size_t _size = 0;
         size_t reserved_end = 0;
 
+        void steal_block_begin() {
+            arr_block<T>* move_block = arr.arr;
+            reserved_begin -= move_block->_size;
+            reserved_end += move_block->_size;
+
+
+            arr.arr = move_block->next_;
+
+            move_block->next_ = nullptr;
+            move_block->_prev = arr.arr_end;
+
+            if (arr.arr_end->_prev == move_block)
+                arr.arr->next_ = move_block;
+            arr.arr_end = move_block;
+            arr.arr->_prev = nullptr;
+        }
+
+        void steal_block_end() {
+            arr_block<T>* move_block = arr.arr_end;
+            reserved_end -= move_block->_size;
+            reserved_begin += move_block->_size;
+
+            arr.arr_end = move_block->_prev;
+            arr.arr_end->next_ = nullptr;
+
+            move_block->_prev = nullptr;
+            move_block->next_ = arr.arr;
+
+            if (arr.arr->next_ == move_block)
+                arr.arr_end->_prev = move_block;
+            arr.arr = move_block;
+            arr.arr_end->_prev = nullptr;
+        }
+
     public:
         using iterator = __list_array_impl::iterator<T>;
         using const_iterator = __list_array_impl::const_iterator<T>;
@@ -1663,6 +1697,9 @@ namespace __list_array_impl {
             if (reserved_begin) {
                 arr[--reserved_begin] = copy_to;
                 _size++;
+            } else if (arr.arr_end->_size <= reserved_end) {
+                steal_block_end();
+                push_back(copy_to);
             } else {
                 reserve_push_front(_size + 1);
                 push_front(copy_to);
@@ -1673,6 +1710,9 @@ namespace __list_array_impl {
             if (reserved_begin) {
                 arr[--reserved_begin] = copy_to;
                 _size++;
+            } else if (arr.arr_end->_size <= reserved_end) {
+                steal_block_begin();
+                push_back(std::move(copy_to));
             } else {
                 reserve_push_front(_size + 1);
                 push_front(std::move(copy_to));
@@ -1690,6 +1730,9 @@ namespace __list_array_impl {
             if (reserved_end) {
                 arr[reserved_begin + _size++] = copy_to;
                 --reserved_end;
+            } else if (arr.arr->_size <= reserved_begin) {
+                steal_block_begin();
+                push_back(copy_to);
             } else {
                 reserve_push_back(_size + 1);
                 push_back(copy_to);
@@ -1700,6 +1743,9 @@ namespace __list_array_impl {
             if (reserved_end) {
                 arr[reserved_begin + _size++] = std::move(copy_to);
                 --reserved_end;
+            } else if (arr.arr->_size <= reserved_begin) {
+                steal_block_begin();
+                push_back(std::move(copy_to));
             } else {
                 reserve_push_back(_size + 1);
                 push_back(std::move(copy_to));
@@ -1710,10 +1756,6 @@ namespace __list_array_impl {
             if (_size) {
                 ++reserved_end;
                 --_size;
-                if (arr.arr_end->_size <= reserved_end) {
-                    arr.resize_front(reserved_begin + _size);
-                    reserved_end = 0;
-                }
             } else
                 throw std::out_of_range("This list_array is empty");
         }
@@ -1722,10 +1764,6 @@ namespace __list_array_impl {
             if (_size) {
                 ++reserved_begin;
                 --_size;
-                if (arr.arr->_size <= reserved_begin) {
-                    arr.resize_begin(_size + reserved_end);
-                    reserved_begin = 0;
-                }
             } else
                 throw std::out_of_range("This list_array is empty");
         }
