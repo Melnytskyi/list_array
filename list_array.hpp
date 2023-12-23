@@ -1697,26 +1697,32 @@ namespace __list_array_impl {
             if (reserved_begin) {
                 arr[--reserved_begin] = copy_to;
                 _size++;
-            } else if (arr.arr_end->_size <= reserved_end) {
-                steal_block_end();
-                push_back(copy_to);
-            } else {
-                reserve_push_front(_size + 1);
-                push_front(copy_to);
+                return;
+            } else if (arr.arr_end) {
+                if (arr.arr_end->_size <= reserved_end) {
+                    steal_block_begin();
+                    push_back(copy_to);
+                    return;
+                }
             }
+            reserve_push_front(_size + 1);
+            push_front(copy_to);
         }
 
         conexpr void push_front(T&& copy_to) {
             if (reserved_begin) {
                 arr[--reserved_begin] = copy_to;
                 _size++;
-            } else if (arr.arr_end->_size <= reserved_end) {
-                steal_block_begin();
-                push_back(std::move(copy_to));
-            } else {
-                reserve_push_front(_size + 1);
-                push_front(std::move(copy_to));
+                return;
+            } else if (arr.arr_end) {
+                if (arr.arr_end->_size <= reserved_end) {
+                    steal_block_begin();
+                    push_back(std::move(copy_to));
+                    return;
+                }
             }
+            reserve_push_front(_size + 1);
+            push_front(std::move(copy_to));
         }
 
         conexpr void reserve_push_back(size_t reserve_size) {
@@ -1730,26 +1736,32 @@ namespace __list_array_impl {
             if (reserved_end) {
                 arr[reserved_begin + _size++] = copy_to;
                 --reserved_end;
-            } else if (arr.arr->_size <= reserved_begin) {
-                steal_block_begin();
-                push_back(copy_to);
-            } else {
-                reserve_push_back(_size + 1);
-                push_back(copy_to);
+                return;
+            } else if (arr.arr) {
+                if (arr.arr->_size <= reserved_begin) {
+                    steal_block_begin();
+                    push_back(copy_to);
+                    return;
+                }
             }
+            reserve_push_back(_size + 1);
+            push_back(copy_to);
         }
 
         conexpr void push_back(T&& copy_to) {
             if (reserved_end) {
                 arr[reserved_begin + _size++] = std::move(copy_to);
                 --reserved_end;
-            } else if (arr.arr->_size <= reserved_begin) {
-                steal_block_begin();
-                push_back(std::move(copy_to));
-            } else {
-                reserve_push_back(_size + 1);
-                push_back(std::move(copy_to));
+                return;
+            } else if (arr.arr) {
+                if (arr.arr->_size <= reserved_begin) {
+                    steal_block_begin();
+                    push_back(std::move(copy_to));
+                    return;
+                }
             }
+            reserve_push_back(_size + 1);
+            push_back(std::move(copy_to));
         }
 
         conexpr void pop_back() {
