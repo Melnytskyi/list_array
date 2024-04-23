@@ -6,7 +6,7 @@
 #include <type_traits>
 #include <utility>
 
-#if __cplusplus >= 202002L
+#if __cplusplus >= 202002L || _MSVC_LANG >= 202002L
     #define req(require) requires require
     #define conexpr constexpr
 #else
@@ -1307,7 +1307,7 @@ namespace __list_array_impl {
         size_t _size = 0;
         size_t reserved_end = 0;
 
-        void steal_block_begin() {
+        conexpr void steal_block_begin() {
             arr_block<T>* move_block = arr.arr;
             reserved_begin -= move_block->_size;
             reserved_end += move_block->_size;
@@ -1324,7 +1324,7 @@ namespace __list_array_impl {
             arr.arr->_prev = nullptr;
         }
 
-        void steal_block_end() {
+        conexpr void steal_block_end() {
             arr_block<T>* move_block = arr.arr_end;
             reserved_end -= move_block->_size;
             reserved_begin += move_block->_size;
@@ -1570,14 +1570,26 @@ namespace __list_array_impl {
             }
         }
 
-        conexpr list_array(const std::initializer_list<list_array<T>>& vals) {
-            for (const list_array<T>& it : vals)
+        template <class AnotherT>
+        conexpr list_array(const std::initializer_list<AnotherT>& vals) {
+            for (const AnotherT& it : vals)
                 push_back(it);
+        }
+
+        conexpr list_array(const T* arr, size_t arr_size) {
+            push_back(arr, arr_size);
         }
 
         template <typename Iterable>
         conexpr list_array(Iterable begin, Iterable end, size_t reserve_len = 0) {
-            if (reserve_len)
+            if constexpr (std::is_pointer<Iterable>::value) {
+                size_t len = end - begin;
+                if (len < reserve_len)
+                    len = reserve_len;
+                if (len == 0)
+                    return;
+                reserve_push_back(len);
+            } else if (reserve_len)
                 reserve_push_back(reserve_len);
             while (begin != end)
                 push_back(*begin++);
@@ -1662,7 +1674,9 @@ namespace __list_array_impl {
                         arr.resize_begin(new_size);
                     reserved_begin = 0;
                 }
-                for (auto& it : range(_size, new_size))
+                size_t old_size = _size;
+                _size = new_size;
+                for (auto& it : range(old_size, new_size))
                     it = auto_init;
             }
             _size = new_size;
@@ -1972,7 +1986,7 @@ namespace __list_array_impl {
             return false;
         }
 
-        size_t blocks_count() const {
+        conexpr size_t blocks_count() const {
             const arr_block<T>* block = arr.arr;
             size_t res = 0;
             while (block) {
@@ -3196,12 +3210,17 @@ namespace __list_array_impl {
         }
 
         template <class ConvertTo, class _Fn>
-        conexpr list_array<ConvertTo> convert(_Fn iterate_fn) {
+        conexpr list_array<ConvertTo> convert(_Fn iterate_fn) const& {
             return convert<ConvertTo>(iterate_fn, 0, _size);
         }
 
         template <class ConvertTo, class _Fn>
-        conexpr list_array<ConvertTo> convert(_Fn iterate_fn, size_t start_pos, size_t end_pos) {
+        conexpr list_array<ConvertTo> convert(_Fn iterate_fn) && {
+            return convert_take<ConvertTo>(iterate_fn, 0, _size);
+        }
+
+        template <class ConvertTo, class _Fn>
+        conexpr list_array<ConvertTo> convert(_Fn iterate_fn, size_t start_pos, size_t end_pos) const& {
             list_array<ConvertTo> res;
             if (start_pos > end_pos) {
                 std::swap(start_pos, end_pos);
@@ -3218,6 +3237,11 @@ namespace __list_array_impl {
                     res.push_back(iterate_fn(i));
             }
             return res;
+        }
+
+        template <class ConvertTo, class _Fn>
+        conexpr list_array<ConvertTo> convert(_Fn iterate_fn, size_t start_pos, size_t end_pos) && {
+            return convert_take<ConvertTo>(iterate_fn, start_pos, end_pos);
         }
 
         template <class ConvertTo, class _Fn>
@@ -3367,6 +3391,303 @@ namespace __list_array_impl {
 
 template <class T>
 using list_array = __list_array_impl::list_array<T>;
+
+struct bit_list_array {
+    list_array<uint8_t> arr;
+    uint8_t begin_bit : 4;
+    uint8_t end_bit : 4;
+
+    class bit_refrence {
+        uint8_t& byte;
+        uint8_t bit;
+
+    public:
+        conexpr bit_refrence(uint8_t& byte, uint8_t bit)
+            : byte(byte), bit(bit) {}
+
+        conexpr operator bool() const {
+            return (byte >> bit) & 1;
+        }
+
+        conexpr bit_refrence& operator=(bool val) {
+            if (val)
+                byte |= 1 << bit;
+            else
+                byte &= ~(1 << bit);
+            return *this;
+        }
+
+        conexpr bit_refrence& operator&=(bool val) {
+            if (!val)
+                byte &= ~(1 << bit);
+            return *this;
+        }
+
+        conexpr bit_refrence& operator|=(bool val) {
+            if (val)
+                byte |= 1 << bit;
+            return *this;
+        }
+
+        conexpr bit_refrence& operator^=(bool val) {
+            if (val)
+                byte ^= 1 << bit;
+            return *this;
+        }
+    };
+
+public:
+    conexpr bit_list_array()
+        : begin_bit(0), end_bit(0) {}
+
+    conexpr bit_list_array(size_t size)
+        : arr(size / 8 + (size % 8 ? 1 : 0)), begin_bit(0), end_bit(0) {}
+
+    conexpr bit_list_array(const bit_list_array& copy)
+        : arr(copy.arr), begin_bit(copy.begin_bit), end_bit(copy.end_bit) {}
+
+    conexpr bit_list_array(bit_list_array&& move) noexcept {
+        arr.swap(move.arr);
+        begin_bit = move.begin_bit;
+        end_bit = move.end_bit;
+    }
+
+    conexpr size_t size() const {
+        return (arr.size() - 1) * 8 + end_bit - begin_bit;
+    }
+
+    conexpr bit_list_array& operator=(const bit_list_array& copy) {
+        arr = copy.arr;
+        begin_bit = copy.begin_bit;
+        end_bit = copy.end_bit;
+        return *this;
+    }
+
+    conexpr bit_list_array& operator=(bit_list_array&& move) noexcept {
+        arr.swap(move.arr);
+        begin_bit = move.begin_bit;
+        end_bit = move.end_bit;
+        return *this;
+    }
+
+    conexpr void push_back(bool val) {
+        if (end_bit == 8) {
+            arr.push_back(0);
+            end_bit = 0;
+        }
+        arr[arr.size() - 1] |= val << end_bit++;
+    }
+
+    conexpr void pop_back() {
+        if (end_bit == 0) {
+            arr.pop_back();
+            end_bit = 8;
+            return;
+        }
+        end_bit--;
+        arr[arr.size() - 1] &= ~(1 << end_bit);
+    }
+
+    conexpr void push_front(bool val) {
+        if (begin_bit == 0) {
+            arr.push_front(0);
+            begin_bit = 8;
+        }
+        arr[0] |= val << --begin_bit;
+    }
+
+    conexpr void pop_front() {
+        if (begin_bit == 8) {
+            arr.pop_front();
+            begin_bit = 0;
+            return;
+        }
+        arr[0] &= ~(1 << begin_bit++);
+    }
+
+    conexpr bool at(size_t pos) const {
+        size_t byte = pos / 8;
+        size_t bit = pos % 8;
+        if (byte >= arr.size())
+            throw std::out_of_range("pos out of size limit");
+        if (byte == 0 && bit < begin_bit)
+            throw std::out_of_range("pos out of size limit");
+        if (byte == arr.size() - 1 && bit >= end_bit)
+            throw std::out_of_range("pos out of size limit");
+        return (arr[byte] >> bit) & 1;
+    }
+
+    conexpr bool set(size_t pos, bool val) {
+        size_t byte = pos / 8;
+        size_t bit = pos % 8;
+        if (byte >= arr.size())
+            throw std::out_of_range("pos out of size limit");
+        if (byte == 0 && bit < begin_bit)
+            throw std::out_of_range("pos out of size limit");
+        if (byte == arr.size() - 1 && bit >= end_bit)
+            throw std::out_of_range("pos out of size limit");
+        bool res = (arr[byte] >> bit) & 1;
+        if (val)
+            arr[byte] |= 1 << bit;
+        else
+            arr[byte] &= ~(1 << bit);
+        return res;
+    }
+
+    conexpr bit_refrence operator[](size_t pos) {
+        size_t byte = pos / 8;
+        size_t bit = pos % 8;
+        if (byte >= arr.size())
+            throw std::out_of_range("pos out of size limit");
+        if (byte == 0 && bit < begin_bit)
+            throw std::out_of_range("pos out of size limit");
+        if (byte == arr.size() - 1 && bit >= end_bit)
+            throw std::out_of_range("pos out of size limit");
+
+        return bit_refrence(arr[byte], bit);
+    }
+
+    conexpr void clear() {
+        arr.clear();
+        begin_bit = 0;
+        end_bit = 0;
+    }
+
+    conexpr void resize(size_t size) {
+        arr.resize(size / 8 + (size % 8 ? 1 : 0));
+    }
+
+    conexpr void reserve_push_back(size_t size) {
+        arr.reserve_push_back(size / 8 + (size % 8 ? 1 : 0));
+    }
+
+    conexpr void reserve_push_front(size_t size) {
+        arr.reserve_push_front(size / 8 + (size % 8 ? 1 : 0));
+    }
+
+    conexpr void commit() {
+        //if array contains unused bits, then shift all bits to the left
+        if (begin_bit != 0) {
+            bit_list_array tmp;
+            size_t _size = size();
+            tmp.reserve_push_back(_size);
+            for (size_t i = 0; i < _size; i++)
+                tmp.push_back(at(i));
+            *this = std::move(tmp);
+        } else {
+            arr.commit();
+        }
+    }
+
+    conexpr void swap(bit_list_array& to_swap) noexcept {
+        if (this != &to_swap) {
+            arr.swap(to_swap.arr);
+            uint8_t tmp = begin_bit;
+            begin_bit = to_swap.begin_bit;
+            to_swap.begin_bit = tmp;
+            tmp = end_bit;
+            end_bit = to_swap.end_bit;
+            to_swap.end_bit = tmp;
+        }
+    }
+
+    conexpr bit_list_array& flip() {
+        for (size_t i = 0; i < arr.size(); i++)
+            arr[i] = ~arr[i];
+        return *this;
+    }
+
+    conexpr bit_list_array operator~() const {
+        return bit_list_array(*this).flip();
+    }
+
+    conexpr bit_list_array& operator&=(const bit_list_array& to_and) {
+        size_t to_and_size = to_and.size();
+        size_t this_size = size();
+        size_t min_size = this_size < to_and_size ? this_size : to_and_size;
+        for (size_t i = 0; i < min_size; i++)
+            operator[](i) &= to_and.at(i);
+        if (this_size > to_and_size) {
+            size_t to_zero_bytes = (this_size - min_size) / 8;
+            size_t to_zero_bits = (this_size - min_size) % 8;
+            for (size_t i = 0; i < to_zero_bytes; i++)
+                arr[to_and_size + i] = 0;
+            for (size_t i = 0; i < to_zero_bits; i++)
+                arr[to_and_size] &= ~(1 << i);
+        }
+        return *this;
+    }
+
+    conexpr bit_list_array operator&(const bit_list_array& to_and) const {
+        return bit_list_array(*this) &= to_and;
+    }
+
+    conexpr bit_list_array& operator|=(const bit_list_array& to_or) {
+        size_t to_or_size = to_or.size();
+        size_t this_size = size();
+        size_t min_size = this_size < to_or_size ? this_size : to_or_size;
+        for (size_t i = 0; i < min_size; i++)
+            operator[](i) |= to_or.at(i);
+        if (this_size < to_or_size) {
+            size_t to_or_bytes = (to_or_size - min_size) / 8;
+            size_t to_or_bits = (to_or_size - min_size) % 8;
+            for (size_t i = 0; i < to_or_bytes; i++)
+                push_back(to_or.arr[min_size + i]);
+            for (size_t i = 0; i < to_or_bits; i++)
+                push_back(to_or.arr[min_size] & (1 << i));
+        }
+        return *this;
+    }
+
+    conexpr bit_list_array operator|(const bit_list_array& to_or) const {
+        return bit_list_array(*this) |= to_or;
+    }
+
+    conexpr bit_list_array& operator^=(const bit_list_array& to_xor) {
+        size_t to_xor_size = to_xor.size();
+        size_t this_size = size();
+        size_t min_size = this_size < to_xor_size ? this_size : to_xor_size;
+        for (size_t i = 0; i < min_size; i++)
+            operator[](i) ^= to_xor.at(i);
+        if (this_size < to_xor_size) {
+            size_t to_xor_bytes = (to_xor_size - min_size) / 8;
+            size_t to_xor_bits = (to_xor_size - min_size) % 8;
+            for (size_t i = 0; i < to_xor_bytes; i++)
+                push_back(to_xor.arr[min_size + i]);
+            for (size_t i = 0; i < to_xor_bits; i++)
+                push_back(to_xor.arr[min_size] & (1 << i));
+        }
+        return *this;
+    }
+
+    conexpr bit_list_array operator^(const bit_list_array& to_xor) const {
+        return bit_list_array(*this) ^= to_xor;
+    }
+
+    conexpr bool operator==(const bit_list_array& to_cmp) const {
+        size_t this_size = size();
+        size_t to_cmp_size = to_cmp.size();
+        size_t min_size = this_size < to_cmp_size ? this_size : to_cmp_size;
+        for (size_t i = 0; i < min_size; i++)
+            if (at(i) != to_cmp.at(i))
+                return false;
+        if (this_size != to_cmp_size)
+            return false;
+        return true;
+    }
+
+    conexpr bool operator!=(const bit_list_array& to_cmp) const {
+        return !operator==(to_cmp);
+    }
+
+    conexpr const list_array<uint8_t>& data() const {
+        return arr;
+    }
+
+    conexpr list_array<uint8_t>& data() {
+        return arr;
+    }
+};
 
 namespace std {
     template <class B>
