@@ -2645,6 +2645,105 @@ namespace __list_array_impl {
             return {tmp, tmp.split()};
         }
 
+        conexpr list_array<list_array<T>> split_by(const T& split_value) {
+            list_array<list_array<T>> res;
+            for (size_t i = 0; i < _size; i++) {
+                if (operator[](i) == split_value) {
+                    if (i != 0)
+                        res.push_back(take(0, i));
+                    else
+                        res.push_back({});
+                    remove(0);
+                    i = 0;
+                }
+            }
+            if (_size)
+                res.push_back(take());
+            return res;
+        }
+
+
+        conexpr std::pair<list_array<T>, list_array<T>> split_by_copy(const T& split_value) const {
+            return list_array<T>(*this).split_by(split_value);
+        }
+
+        template <size_t arr_size>
+        conexpr list_array<list_array<T>> split_by(const T (&split_values)[arr_size]) {
+            return split_by(split_values, arr_size);
+        }
+
+        template <size_t arr_size>
+        conexpr std::pair<list_array<T>, list_array<T>> split_by_copy(const T (&split_values)[arr_size]) const {
+            return split_by_copy(split_values, arr_size);
+        }
+
+        conexpr list_array<list_array<T>> split_by(const T* split_values, size_t split_values_size) {
+            list_array<list_array<T>> res;
+            for (size_t i = 0; i < _size; i++) {
+                for (size_t j = 0; j < split_values_size; j++) {
+                    if (operator[](i) == split_values[j]) {
+                        if (i != 0)
+                            res.push_back(take(0, i));
+                        else
+                            res.push_back({});
+                        remove(0);
+                        i = 0;
+                        break;
+                    }
+                }
+            }
+            if (_size)
+                res.push_back(take());
+            return res;
+        }
+
+        conexpr std::pair<list_array<T>, list_array<T>> split_by_copy(const T* split_values, size_t split_values_size) const {
+            return list_array<T>(*this).split_by(split_values, split_values_size);
+        }
+
+        conexpr list_array<list_array<T>> split_by(const list_array<T>& split_values) {
+            list_array<list_array<T>> res;
+            for (size_t i = 0; i < _size; i++) {
+                if (split_values.contains(operator[](i))) {
+                    if (i != 0)
+                        res.push_back(take(0, i));
+                    else
+                        res.push_back({});
+                    remove(0);
+                    i = 0;
+                }
+            }
+            if (_size)
+                res.push_back(take());
+            return res;
+        }
+
+        conexpr std::pair<list_array<T>, list_array<T>> split_by_copy(const list_array<T>& split_values) const {
+            return list_array<T>(*this).split_by(split_values);
+        }
+
+        template <class _Fn>
+        conexpr list_array<list_array<T>> split_if(_Fn split_function) {
+            list_array<list_array<T>> res;
+            for (size_t i = 0; i < _size; i++) {
+                if (split_function(operator[](i))) {
+                    if (i != 0)
+                        res.push_back(take(0, i));
+                    else
+                        res.push_back({});
+                    remove(0);
+                    i = 0;
+                }
+            }
+            if (_size)
+                res.push_back(take());
+            return res;
+        }
+
+        template <class _Fn>
+        conexpr std::pair<list_array<T>, list_array<T>> split_if_copy(_Fn split_function) const {
+            return list_array<T>(*this).split_if(split_function);
+        }
 #pragma endregion
 #pragma region take
 
@@ -3419,7 +3518,7 @@ namespace __list_array_impl {
 #pragma endregion
 #pragma region erase
 
-        conexpr size_t erase(const T& val, size_t start) {
+        conexpr size_t erase(const T& val, size_t start = 0) {
             return remove_if(start, [&val](const T& cmp) { return cmp == val; });
         }
 
@@ -3899,6 +3998,7 @@ namespace __list_array_impl {
             arr.arr->arr_contain = tmp;
             arr.arr->_size = _size;
             arr._size = _size;
+            reserved_begin = reserved_end = 0;
         }
 
         //insert and remove optimization
