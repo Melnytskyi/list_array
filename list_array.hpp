@@ -18,9 +18,9 @@
 namespace __list_array_impl {
     template <typename... Ts>
     struct conditions_helper {};
+
     template <typename T, typename _ = void>
     struct is_container : std::false_type {};
-
 
     template <typename T>
     struct is_container<
@@ -37,7 +37,10 @@ namespace __list_array_impl {
                 decltype(std::declval<T>().end()),
                 decltype(std::declval<T>().cbegin()),
                 decltype(std::declval<T>().cend())>,
-            void>> : public std::true_type {};
+            void>> : std::true_type {
+        using value_type = typename T::value_type;
+        using container = typename T;
+    };
 
     template <typename T, typename _ = void>
     struct can_direct_index : std::false_type {};
@@ -3309,7 +3312,25 @@ namespace __list_array_impl {
         }
 
 #pragma endregion
+#pragma region concat
+
+        static list_array<T> concat(const list_array<list_array<T>>& concat_arr) {
+            for (auto& i : concat_arr)
+                push_back(i);
+        }
+
+        template <class Y = T>
+        typename is_container<Y>::container concat() {
+            T res;
+            for (auto& i : *this)
+                res.push_back(i);
+            return res;
+        }
+
+
+#pragma endregion
 #pragma region where
+
         template <class _Fn>
         conexpr list_array<T> where(_Fn check_fn) const {
             return where(0, _size, check_fn);
@@ -3348,35 +3369,35 @@ namespace __list_array_impl {
             return whereI(0, _size, check_fn);
         }
 
-        template <class _Fn>
-        conexpr list_array<T> whereI(size_t start_pos, _Fn check_fn) const {
-            return whereI(start_pos, _size, check_fn);
-        }
+                template <class _Fn>
+                conexpr list_array<T> whereI(size_t start_pos, _Fn check_fn) const {
+                    return whereI(start_pos, _size, check_fn);
+                }
 
-        template <class _Fn>
-        conexpr list_array<T> whereI(size_t start_pos, size_t end_pos, _Fn check_fn) const {
-            list_array<T> res;
-            if (start_pos > end_pos) {
-                std::swap(start_pos, end_pos);
-                if (end_pos > _size)
-                    throw std::out_of_range("end_pos out of size limit");
-                res.reserve_push_back(end_pos - start_pos);
-                size_t pos = end_pos;
-                for (auto& i : reverse_range(start_pos, end_pos))
-                    if (check_fn(i, pos--))
-                        res.push_back(i);
-            } else {
-                if (end_pos > _size)
-                    throw std::out_of_range("end_pos out of size limit");
-                res.reserve_push_back(end_pos - start_pos);
-                size_t pos = start_pos;
-                for (auto& i : range(start_pos, end_pos))
-                    if (check_fn(i, pos--))
-                        res.push_back(i);
-            }
-            res.shrink_to_fit();
-            return res;
-        }
+                template <class _Fn>
+                conexpr list_array<T> whereI(size_t start_pos, size_t end_pos, _Fn check_fn) const {
+                    list_array<T> res;
+                    if (start_pos > end_pos) {
+                        std::swap(start_pos, end_pos);
+                        if (end_pos > _size)
+                            throw std::out_of_range("end_pos out of size limit");
+                        res.reserve_push_back(end_pos - start_pos);
+                        size_t pos = end_pos;
+                        for (auto& i : reverse_range(start_pos, end_pos))
+                            if (check_fn(i, pos--))
+                                res.push_back(i);
+                    } else {
+                        if (end_pos > _size)
+                            throw std::out_of_range("end_pos out of size limit");
+                        res.reserve_push_back(end_pos - start_pos);
+                        size_t pos = start_pos;
+                        for (auto& i : range(start_pos, end_pos))
+                            if (check_fn(i, pos--))
+                                res.push_back(i);
+                    }
+                    res.shrink_to_fit();
+                    return res;
+                }
 
 #pragma endregion
 #pragma region for each
@@ -3497,7 +3518,7 @@ namespace __list_array_impl {
 
         template <class ConvertTo, class _Fn>
         conexpr list_array<ConvertTo> convert_take(_Fn iterate_fn) {
-            return convert_take<ConvertTo>(iterate_fn, 0, _size);
+            return convert_take<ConvertTo>(0, _size, iterate_fn);
         }
 
         template <class ConvertTo, class _Fn>
