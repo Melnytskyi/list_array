@@ -2023,7 +2023,7 @@ namespace __list_array_impl {
 
         constexpr void push_front(T&& copy_to) {
             if (reserved_begin) {
-                pair.hold_value[--reserved_begin] = copy_to;
+                pair.hold_value[--reserved_begin] = std::move(copy_to);
                 _size++;
                 return;
             } else if (pair.hold_value.arr_end) {
@@ -4391,9 +4391,10 @@ namespace __list_array_impl {
             return pair.hold_value[reserved_begin + pos];
         }
 
+
         constexpr T atDefault(size_t pos) const {
             if (pos >= _size)
-                return value_tag_initializer{};
+                return T{};
             return pair.hold_value[reserved_begin + pos];
         }
 
@@ -4437,7 +4438,7 @@ namespace __list_array_impl {
             requires(std::copy_constructible<T>)
         {
             if (!_size)
-                return value_tag_initializer{};
+                return T{};
             const T* max = &operator[](0);
             for (const T& it : *this)
                 if (*max < it)
@@ -4449,7 +4450,7 @@ namespace __list_array_impl {
             requires(std::copy_constructible<T>)
         {
             if (!_size)
-                return value_tag_initializer{};
+                return T{};
             const T* min = &operator[](0);
             for (const T& it : *this)
                 if (*min > it)
