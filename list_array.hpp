@@ -34,8 +34,6 @@ namespace __list_array_impl {
         using container = typename T;
     };
 
-    template <typename T, typename _ = void>
-    struct can_direct_index : std::false_type {};
 
     template <class Alloc, class T, bool = std::is_empty_v<Alloc> && !std::is_final_v<Alloc>>
     struct compressed_allocator final : private Alloc {
@@ -269,6 +267,9 @@ namespace __list_array_impl {
             return allocator;
         }
     };
+
+    template <typename T, typename _ = void>
+    struct can_direct_index : std::false_type {};
 
     template <typename T>
     struct can_direct_index<
@@ -1630,6 +1631,38 @@ namespace __list_array_impl {
             pair.hold_value.arr = move_block;
             pair.hold_value.arr_end->_prev = nullptr;
         }
+
+        template <class C_T>
+        struct concat_helper {
+            constexpr static bool do_concat(list_array<T, Allocator>& container, const C_T& value) {
+                container.push_back((T)value);
+                return true;
+            }
+
+            constexpr static bool do_concat(list_array<T, Allocator>& container, C_T&& value) {
+                container.push_back((T)std::move(value));
+                return true;
+            }
+        };
+
+        template <class AnotherAllocator>
+        struct concat_helper<list_array<T, AnotherAllocator>> {
+            constexpr static bool do_concat(list_array<T, Allocator>& container, const list_array<T, AnotherAllocator>& value) {
+                container.push_back(value);
+                return true;
+            }
+
+            constexpr static bool do_concat(list_array<T, Allocator>& container, list_array<T, AnotherAllocator>&& value) {
+                container.push_back(std::move(value));
+                return true;
+            }
+        };
+
+        template <class C_T>
+        constexpr void make_concat(const C_T& value) {
+            concat_helper<C_T>::do_concat(*this, value);
+        }
+
 
     public:
         using iterator = __list_array_impl::iterator<T, Allocator>;
@@ -3690,6 +3723,13 @@ namespace __list_array_impl {
 #pragma endregion
 #pragma region concat
 
+        template <class... Arguments>
+        static list_array<T, Allocator> concat(Arguments&&... args) {
+            list_array<T, Allocator> result;
+            (result.make_concat(args), ...);
+            return result;
+        }
+
         template <class AnyAllocator0, class AnyAllocator1>
         static list_array<T, Allocator>& concat(const list_array<list_array<T, AnyAllocator1>, AnyAllocator0>& concat_arr) {
             for (auto& i : concat_arr)
@@ -4405,7 +4445,10 @@ namespace __list_array_impl {
         constexpr T* data() {
             if (blocks_more(1))
                 commit();
-            return pair.hold_value.arr->pair.hold_value;
+            if (pair.hold_value.arr)
+                return pair.hold_value.arr->pair.hold_value;
+            else
+                return nullptr;
         }
 
         constexpr const T* data() const {
@@ -4466,6 +4509,30 @@ namespace __list_array_impl {
             T* tmp = alloc.allocate(_size);
             begin()._fast_load<true>(tmp, _size);
             return tmp;
+        }
+
+        template <class Container>
+        constexpr Container to_container() const& {
+            Container copy_container;
+            size_t iter = size();
+            size_t insert_at = 0;
+            auto iterate = begin();
+            copy_container.resize(iter);
+            while (iter--)
+                copy_container[insert_at++] = *iterate++;
+            return copy_container;
+        }
+
+        template <class Container>
+        constexpr Container to_container() && {
+            Container move_container;
+            size_t iter = size();
+            size_t insert_at = 0;
+            auto iterate = begin();
+            move_container.resize(iter);
+            while (iter--)
+                move_container[insert_at++] = std::move(*iterate++);
+            return move_container;
         }
 
 #pragma endregion
