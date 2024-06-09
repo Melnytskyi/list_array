@@ -2040,7 +2040,7 @@ namespace __list_array_impl {
 
         constexpr void push_front(const T& copy_to) {
             if (reserved_begin) {
-                pair.hold_value[--reserved_begin] = copy_to;
+                std::construct_at(&pair.hold_value[--reserved_begin], std::move(copy_to));
                 _size++;
                 return;
             } else if (pair.hold_value.arr_end) {
@@ -2056,7 +2056,7 @@ namespace __list_array_impl {
 
         constexpr void push_front(T&& copy_to) {
             if (reserved_begin) {
-                pair.hold_value[--reserved_begin] = std::move(copy_to);
+                std::construct_at(&pair.hold_value[--reserved_begin], std::move(copy_to));
                 _size++;
                 return;
             } else if (pair.hold_value.arr_end) {
@@ -2072,7 +2072,7 @@ namespace __list_array_impl {
 
         constexpr void push_back(const T& copy_to) {
             if (reserved_end) {
-                pair.hold_value[reserved_begin + _size++] = copy_to;
+                std::construct_at(&pair.hold_value[reserved_begin + _size++], std::move(copy_to));
                 --reserved_end;
                 return;
             } else if (pair.hold_value.arr) {
@@ -2088,7 +2088,7 @@ namespace __list_array_impl {
 
         constexpr void push_back(T&& copy_to) {
             if (reserved_end) {
-                pair.hold_value[reserved_begin + _size++] = std::move(copy_to);
+                std::construct_at(&pair.hold_value[reserved_begin + _size++], std::move(copy_to));
                 --reserved_end;
                 return;
             } else if (pair.hold_value.arr) {
@@ -2104,6 +2104,7 @@ namespace __list_array_impl {
 
         constexpr void pop_back() {
             if (_size) {
+                std::destroy_at(&pair.hold_value[reserved_begin + _size - 1]);
                 ++reserved_end;
                 --_size;
             } else
@@ -2112,6 +2113,7 @@ namespace __list_array_impl {
 
         constexpr void pop_front() {
             if (_size) {
+                std::destroy_at(&pair.hold_value[reserved_begin]);
                 ++reserved_begin;
                 --_size;
             } else
