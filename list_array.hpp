@@ -309,7 +309,7 @@ namespace __list_array_impl {
             return block && bool(block ? block->next_ : nullptr);
         }
 
-        template<bool copy_construct>
+        template <bool copy_construct, bool make_move = false>
         constexpr void _fast_load(T* arr, size_t arr_size) {
             size_t j = pos;
             arr_block<T, Allocator>* block_tmp = block;
@@ -318,10 +318,17 @@ namespace __list_array_impl {
 
             for (size_t i = 0; i < arr_size;) {
                 for (; i < arr_size && j < block_size; j++){
-                    if constexpr (copy_construct)
-                        std::construct_at(arr + i++, block_arr[j]);
-                    else
-                        arr[i++] = block_arr[j];
+                    if constexpr (make_move) {
+                        if constexpr (copy_construct)
+                            std::construct_at(arr + i++, std::move(block_arr[j]));
+                        else
+                            arr[i++] = std::move(block_arr[j]);
+                    } else {
+                        if constexpr (copy_construct)
+                            std::construct_at(arr + i++, block_arr[j]);
+                        else
+                            arr[i++] = block_arr[j];
+                    }
                 }
                 j = 0;
                 block_tmp = block_tmp->next_;
@@ -815,13 +822,9 @@ namespace __list_array_impl {
         }
 
         constexpr ~arr_block() {
-            if (_prev) {
-                _prev->next_ = nullptr;
-                delete _prev;
-            } else if (next_) {
-                next_->_prev = nullptr;
-                delete next_;
-            }
+            assert(!_prev && "_prev block not de allocated");
+            assert(!next_ && "next_ block not de allocated");
+
             if (pair.hold_value)
                 pair.deallocate_destruct(pair.hold_value, _size);
         }
@@ -832,30 +835,6 @@ namespace __list_array_impl {
 
         constexpr const T& operator[](size_t pos) const {
             return (pos < _size) ? pair.hold_value[pos] : (*next_)[pos - _size];
-        }
-
-        constexpr arr_block& operator=(const arr_block& copy) {
-            if (this == &copy)
-                return *this;
-            if (pair.hold_value)
-                pair.deallocate_destruct(pair.hold_value, _size);
-            _size = copy._size;
-            pair.hold_value = pair.allocate(_size);
-            for (size_t i = 0; i < _size; i++)
-                std::construct_at(pair.hold_value + i, copy.pair.hold_value[i]);
-            return *this;
-        }
-
-        constexpr arr_block& operator=(arr_block&& move) noexcept {
-            if (this == &move)
-                return *this;
-            pair.hold_value = move.pair.hold_value;
-            _prev = move._prev;
-            next_ = move.next_;
-            _size = move._size;
-            move._prev = move.next_ = nullptr;
-            move.pair.hold_value = nullptr;
-            return *this;
         }
 
         constexpr T& index_back(size_t pos) {
@@ -1038,11 +1017,11 @@ namespace __list_array_impl {
             arr_block<T, Allocator>& second_block = *new arr_block<T, Allocator>(allocator_a_size.get_allocator(), &first_block, block_size - pos - 1, nullptr);
 
             for (size_t i = 0; i < pos; i++)
-                first_block.pair.hold_value[i] = this_block.pair.hold_value[i];
+                first_block.pair.hold_value[i] = std::move(this_block.pair.hold_value[i]);
 
             size_t block_half_size = pos + 1;
             for (size_t i = block_half_size; i < block_size; i++)
-                second_block.pair.hold_value[i - block_half_size] = this_block.pair.hold_value[i];
+                second_block.pair.hold_value[i - block_half_size] = std::move(this_block.pair.hold_value[i]);
 
             swap_block_with_blocks(this_block, first_block, second_block);
         }
@@ -1073,10 +1052,10 @@ namespace __list_array_impl {
             arr_block<T, Allocator>& second_block = *new arr_block<T, Allocator>(allocator_a_size.get_allocator(), &first_block, block_size - first_size, nullptr);
 
             for (size_t i = 0; i < pos; i++)
-                first_block.pair.hold_value[i] = this_block.pair.hold_value[i];
+                first_block.pair.hold_value[i] = std::move(this_block.pair.hold_value[i]);
             first_block[first_size] = item;
             for (size_t i = first_size; i < block_size; i++)
-                second_block.pair.hold_value[i - first_size] = this_block.pair.hold_value[i];
+                second_block.pair.hold_value[i - first_size] = std::move(this_block.pair.hold_value[i]);
             swap_block_with_blocks(this_block, first_block, second_block);
         }
 
@@ -1106,10 +1085,10 @@ namespace __list_array_impl {
             arr_block<T, Allocator>& second_block = *new arr_block<T, Allocator>(allocator_a_size.get_allocator(), &first_block, block_size - first_size, nullptr);
 
             for (size_t i = 0; i < pos; i++)
-                first_block.pair.hold_value[i] = this_block.pair.hold_value[i];
+                first_block.pair.hold_value[i] = std::move(this_block.pair.hold_value[i]);
             first_block[first_size] = std::move(item);
             for (size_t i = first_size; i < block_size; i++)
-                second_block.pair.hold_value[i - first_size] = this_block.pair.hold_value[i];
+                second_block.pair.hold_value[i - first_size] = std::move(this_block.pair.hold_value[i]);
             swap_block_with_blocks(this_block, first_block, second_block);
         }
 
@@ -1131,10 +1110,10 @@ namespace __list_array_impl {
                 arr_block<T, Allocator>& first_block = *new arr_block<T, Allocator>(allocator_a_size.get_allocator(), nullptr, pos, nullptr);
                 arr_block<T, Allocator>& second_block = *new arr_block<T, Allocator>(allocator_a_size.get_allocator(), nullptr, block_size - pos, nullptr);
                 for (size_t i = 0; i < pos; i++)
-                    first_block.pair.hold_value[i] = this_block.pair.hold_value[i];
+                    first_block.pair.hold_value[i] = std::move(this_block.pair.hold_value[i]);
 
                 for (size_t i = pos; i < block_size; i++)
-                    second_block.pair.hold_value[i - pos] = this_block.pair.hold_value[i];
+                    second_block.pair.hold_value[i - pos] = std::move(this_block.pair.hold_value[i]);
 
                 arr_block<T, Allocator>& new_block_block = *new arr_block<T, Allocator>(allocator_a_size.get_allocator(), &first_block, item_size, &second_block);
                 for (size_t i = 0; i < item_size; i++)
@@ -1175,7 +1154,8 @@ namespace __list_array_impl {
             size_t size = block.block->_size;
             size_t rem_filt_siz =
                 size > end ? (size >> 3) + (size & 7 ? 1 : 0) : (end >> 3) + (end & 7 ? 1 : 0);
-            uint8_t* remove_filter = new uint8_t[rem_filt_siz]{0};
+
+            std::shared_ptr<uint8_t[]> remove_filter(new uint8_t[rem_filt_siz]{0});
             T* arr_inter = block.block->pair.hold_value;
             size_t new_size = size;
 
@@ -1200,14 +1180,13 @@ namespace __list_array_impl {
                     size_t j = 0;
                     for (size_t i = 0; j < new_size && i < end; i++)
                         if (!(remove_filter[i >> 3] & (1 << (i & 7))))
-                            new_arr[j++] = arr_inter[i];
+                            std::construct_at(&new_arr[j++], arr_inter[i]);
 
                     allocator_a_size.deallocate_destruct(block.block->pair.hold_value, block.block->_size);
                     block.block->pair.hold_value = new_arr;
                     block.block->_size = new_size;
                 }
             }
-            delete[] remove_filter;
             return size - new_size;
         }
 
@@ -2894,12 +2873,12 @@ namespace __list_array_impl {
                     size_t l = middle - start + 1;
                     size_t m = end - middle + 1;
                     if (curr_L_size < l) {
-                        pair.deallocate_destruct(L, curr_L_size);
+                        pair.deallocate(L, curr_L_size);
                         L = pair.allocate(l);
                         curr_L_size = l;
                     }
                     if (curr_M_size < m) {
-                        pair.deallocate_destruct(M, curr_M_size);
+                        pair.deallocate(M, curr_M_size);
                         M = pair.allocate(m);
                         curr_M_size = m;
                     }
@@ -2909,17 +2888,21 @@ namespace __list_array_impl {
                     size_t n2 = end - middle;
                     if (curr_L_size < n1 || curr_M_size < n2)
                         fix_size(start, middle, end);
-                    get_iterator(start)._fast_load(L, n1);
-                    get_iterator(middle)._fast_load(M, n2);
+                    get_iterator(start)._fast_load<true, true>(L, n1);
+                    get_iterator(middle)._fast_load<true, true>(M, n2);
                     size_t i = 0, j = 0, k = start;
                     for (T& it : range(start, end)) {
                         if (i < n1 && j < n2)
-                            it = L[i] <= M[j] ? L[i++] : M[j++];
+                            it = std::move(L[i] <= M[j] ? L[i++] : M[j++]);
                         else if (i < n1)
-                            it = L[i++];
+                            it = std::move(L[i++]);
                         else if (j < n2)
-                            it = M[j++];
+                            it = std::move(M[j++]);
                     }
+                    for (size_t i = 0; i < n1; i++)
+                        L[i].~T();
+                    for (size_t i = 0; i < n2; i++)
+                        M[i].~T();
                 };
                 for (size_t b = 2; b < _size; b <<= 1) {
                     for (size_t i = 0; i < _size; i += b) {
@@ -2960,19 +2943,19 @@ namespace __list_array_impl {
         constexpr list_array<T, Allocator>& sort(_FN compare) {
             size_t curr_L_size = _size / 2 + 1;
             size_t curr_M_size = _size / 2 + 1;
-            T* L = pair.allocate_construct(_size / 2 + 1);
-            T* M = pair.allocate_construct(_size / 2 + 1);
+            T* L = pair.allocate(_size / 2 + 1);
+            T* M = pair.allocate(_size / 2 + 1);
             auto fix_size = [&L, &M, &curr_L_size, &curr_M_size](size_t start, size_t middle, size_t end) {
                 size_t l = middle - start + 1;
                 size_t m = end - middle + 1;
                 if (curr_L_size < l) {
-                    pair.deallocate_destruct(L, curr_L_size);
-                    L = pair.allocate_construct(l);
+                    pair.deallocate(L, curr_L_size);
+                    L = pair.allocate(l);
                     curr_L_size = l;
                 }
                 if (curr_M_size < m) {
-                    pair.deallocate_destruct(M, curr_M_size);
-                    M = pair.allocate_construct(m);
+                    pair.deallocate(M, curr_M_size);
+                    M = pair.allocate(m);
                     curr_M_size = m;
                 }
             };
@@ -2981,17 +2964,21 @@ namespace __list_array_impl {
                 size_t n2 = end - middle;
                 if (curr_L_size < n1 || curr_M_size < n2)
                     fix_size(start, middle, end);
-                get_iterator(start)._fast_load(L, n1);
-                get_iterator(middle)._fast_load(M, n2);
+                get_iterator(start)._fast_load<true, true>(L, n1);
+                get_iterator(middle)._fast_load<true, true>(M, n2);
                 size_t i = 0, j = 0, k = start;
                 for (T& it : range(start, end)) {
                     if (i < n1 && j < n2)
-                        it = compare(L[i], M[j]) ? L[i++] : M[j++];
+                        it = std::move(compare(L[i], M[j]) ? L[i++] : M[j++]);
                     else if (i < n1)
-                        it = L[i++];
+                        it = std::move(L[i++]);
                     else if (j < n2)
-                        it = M[j++];
+                        it = std::move(M[j++]);
                 }
+                for (size_t i = 0; i < n1; i++)
+                    L[i].~T();
+                for (size_t i = 0; i < n2; i++)
+                    M[i].~T();
             };
             for (size_t b = 2; b < _size; b <<= 1) {
                 for (size_t i = 0; i < _size; i += b) {
@@ -3016,9 +3003,9 @@ namespace __list_array_impl {
             };
             size_t err = 0;
             while ((err = non_sorted_finder(err)))
-                merge(0, err, _size);
-            pair.deallocate_destruct(L, curr_L_size);
-            pair.deallocate_destruct(M, curr_M_size);
+                merge(0, err ? err - 1 : 0, _size);
+            pair.deallocate(L, curr_L_size);
+            pair.deallocate(M, curr_M_size);
             return *this;
         }
 
@@ -3455,22 +3442,17 @@ namespace __list_array_impl {
 #pragma region join
 
         template <class _FN = bool (*)(const T&)>
-        constexpr list_array<T, Allocator>& join(const T& insert_item, _FN where_join) {
-            return operator=(join_copy(insert_item, 0, _size, where_join));
+        constexpr list_array<T, Allocator>& join(const T& insert_item, _FN where_join) const {
+            return join(insert_item, 0, _size, where_join);
         }
 
-        template <class _FN>
-        constexpr list_array<T, Allocator> join_copy(const T& insert_item, _FN where_join) const {
-            return join_copy(insert_item, 0, _size, where_join);
+        template <class _FN = bool (*)(const T&)>
+        constexpr list_array<T, Allocator>& join(const T& insert_item, size_t start_pos, _FN where_join) const {
+            return join(insert_item, start_pos, _size, where_join);
         }
 
-        template <class _FN>
-        constexpr list_array<T, Allocator> join_copy(const T& insert_item, size_t start_pos, _FN where_join) const {
-            return join_copy(insert_item, start_pos, _size, where_join);
-        }
-
-        template <class _FN>
-        constexpr list_array<T, Allocator> join_copy(const T& insert_item, size_t start_pos, size_t end_pos, _FN where_join) const {
+        template <class _FN = bool (*)(const T&)>
+        constexpr list_array<T, Allocator>& join(const T& insert_item, size_t start_pos, size_t end_pos, _FN where_join) const {
             list_array<T, Allocator> res;
             res.reserve_push_back(_size * 2);
             if (start_pos > end_pos) {
@@ -3478,7 +3460,7 @@ namespace __list_array_impl {
                 if (end_pos > _size)
                     throw std::out_of_range("end_pos out of size limit");
                 for (auto& i : reverse_range(start_pos, end_pos)) {
-                    res.push_back(i);
+                    res.push_back(std::move(i));
                     if (where_join(i))
                         res.push_back(insert_item);
                 }
@@ -3486,39 +3468,33 @@ namespace __list_array_impl {
                 if (end_pos > _size)
                     throw std::out_of_range("end_pos out of size limit");
                 for (auto& i : range(start_pos, end_pos)) {
-                    res.push_back(i);
+                    res.push_back(std::move(i));
                     if (where_join(i))
                         res.push_back(insert_item);
                 }
             }
-            return res;
+            return *this = res;
         }
 
-        template <class AnyAllocator, class _FN>
-        constexpr list_array<T, Allocator>& join(const list_array<T, AnyAllocator>& insert_items, _FN where_join) {
-            return operator=(join_copy(insert_items, 0, _size, where_join));
+        template <class AnyAllocator, class _FN = bool (*)(const T&)>
+        constexpr list_array<T, Allocator>& join(const list_array<T, AnyAllocator>& insert_items, _FN where_join) const {
+            return join(insert_items, 0, _size, where_join);
         }
 
-        template <class AnyAllocator, class _FN>
-        constexpr list_array<T, Allocator> join_copy(const list_array<T, AnyAllocator>& insert_items, _FN where_join) const {
-            return join_copy(insert_items, 0, _size, where_join);
+        template <class AnyAllocator, class _FN = bool (*)(const T&)>
+        constexpr list_array<T, Allocator>& join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, _FN where_join) const {
+            return join(insert_items, start_pos, _size, where_join);
         }
 
-        template <class AnyAllocator, class _FN>
-        constexpr list_array<T, Allocator> join_copy(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, _FN where_join) const {
-            return join_copy(insert_items, start_pos, _size, where_join);
-        }
-
-        template <class AnyAllocator, class _FN>
-        constexpr list_array<T, Allocator> join_copy(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, size_t end_pos, _FN where_join) const {
+        template <class AnyAllocator, class _FN = bool (*)(const T&)>
+        constexpr list_array<T, Allocator>& join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, size_t end_pos, _FN where_join) const {
             list_array<T, Allocator> res;
-            res.reserve_push_back(_size * 2);
             if (start_pos > end_pos) {
                 std::swap(start_pos, end_pos);
                 if (end_pos > _size)
                     throw std::out_of_range("end_pos out of size limit");
                 for (auto& i : reverse_range(start_pos, end_pos)) {
-                    res.push_back(i);
+                    res.push_back(std::move(i));
                     if (where_join(i))
                         res.push_back(insert_items);
                 }
@@ -3526,51 +3502,41 @@ namespace __list_array_impl {
                 if (end_pos > _size)
                     throw std::out_of_range("end_pos out of size limit");
                 for (auto& i : range(start_pos, end_pos)) {
-                    res.push_back(i);
+                    res.push_back(std::move(i));
                     if (where_join(i))
                         res.push_back(insert_items);
                 }
             }
-            return res;
+            return *this = res;
         }
 
         template <size_t arr_size, class _FN>
-        constexpr list_array<T, Allocator>& join(const T (&insert_items)[arr_size], _FN where_join) {
-            return operator=(join_copy(insert_items, arr_size, 0, _size, where_join));
+        constexpr list_array<T, Allocator>& join(const T (&insert_items)[arr_size], _FN where_join) const {
+            return join(insert_items, arr_size, 0, _size, where_join);
         }
 
         template <size_t arr_size, class _FN>
-        constexpr list_array<T, Allocator> join_copy(const T (&insert_items)[arr_size], _FN where_join) const {
-            return join_copy(insert_items, arr_size, 0, _size, where_join);
+        constexpr list_array<T, Allocator>& join(const T (&insert_items)[arr_size], size_t start_pos, _FN where_join) const {
+            return join(insert_items, arr_size, start_pos, _size, where_join);
         }
 
         template <size_t arr_size, class _FN>
-        constexpr list_array<T, Allocator> join_copy(const T (&insert_items)[arr_size], size_t start_pos, _FN where_join) const {
-            return join_copy(insert_items, arr_size, start_pos, _size, where_join);
-        }
-
-        template <size_t arr_size, class _FN>
-        constexpr list_array<T, Allocator> join_copy(const T (&insert_items)[arr_size], size_t start_pos, size_t end_pos, _FN where_join) const {
-            return join_copy(insert_items, arr_size, start_pos, end_pos, where_join);
+        constexpr list_array<T, Allocator>& join(const T (&insert_items)[arr_size], size_t start_pos, size_t end_pos, _FN where_join) const {
+            return join(insert_items, arr_size, start_pos, end_pos, where_join);
         }
 
         template <class _FN>
-        constexpr list_array<T, Allocator>& join(const T* insert_items, size_t items_count, _FN where_join) {
-            return operator=(join_copy(insert_items, items_count, 0, _size, where_join));
+        constexpr list_array<T, Allocator>& join(const T* insert_items, size_t items_count, _FN where_join) const {
+            return join(insert_items, items_count, 0, _size, where_join);
         }
 
         template <class _FN>
-        constexpr list_array<T, Allocator> join_copy(const T* insert_items, size_t items_count, _FN where_join) const {
-            return join_copy(insert_items, items_count, 0, _size, where_join);
+        constexpr list_array<T, Allocator>& join(const T* insert_items, size_t items_count, size_t start_pos, _FN where_join) const {
+            return join(insert_items, items_count, start_pos, _size, where_join);
         }
 
         template <class _FN>
-        constexpr list_array<T, Allocator> join_copy(const T* insert_items, size_t items_count, size_t start_pos, _FN where_join) const {
-            return join_copy(insert_items, items_count, start_pos, _size, where_join);
-        }
-
-        template <class _FN>
-        constexpr list_array<T, Allocator> join_copy(const T* insert_items, size_t items_count, size_t start_pos, size_t end_pos, _FN where_join) const {
+        constexpr list_array<T, Allocator>& join(const T* insert_items, size_t items_count, size_t start_pos, size_t end_pos, _FN where_join) const {
             list_array<T, Allocator> res;
             res.reserve_push_back(_size * 2);
             if (start_pos > end_pos) {
@@ -3591,41 +3557,18 @@ namespace __list_array_impl {
                         res.push_back(insert_items, items_count);
                 }
             }
-            return res;
+            return *this = res;
         }
 
-        constexpr list_array<T, Allocator>& join(const T& insert_item) {
-            return operator=(join_copy(insert_item, 0, _size));
+        constexpr list_array<T, Allocator>& join(const T& insert_item) const {
+            return join(insert_item, 0, _size);
         }
 
-        constexpr list_array<T, Allocator> join_copy(const T& insert_item) const {
-            return join_copy(insert_item, 0, _size);
+        constexpr list_array<T, Allocator>& join(const T& insert_item, size_t start_pos) const {
+            return join(insert_item, start_pos, _size);
         }
 
-        constexpr list_array<T, Allocator> join_copy(const T& insert_item, size_t start_pos) const {
-            return join_copy(insert_item, start_pos, _size);
-        }
-
-        constexpr list_array<T, Allocator> join_copy(const T& insert_item, size_t start_pos, size_t end_pos) const {
-            list_array<T, Allocator> res;
-            res.reserve_push_back(_size * 2);
-            if (start_pos > end_pos) {
-                std::swap(start_pos, end_pos);
-                if (end_pos > _size)
-                    throw std::out_of_range("end_pos out of size limit");
-                for (auto& i : reverse_range(start_pos, end_pos)) {
-                    res.push_back(i);
-                    res.push_back(insert_item);
-                }
-            } else {
-                if (end_pos > _size)
-                    throw std::out_of_range("end_pos out of size limit");
-                for (auto& i : range(start_pos, end_pos)) {
-                    res.push_back(i);
-                    res.push_back(insert_item);
-                }
-            }
-            return res;
+        constexpr list_array<T, Allocator>& join(const T& insert_item, size_t start_pos, size_t end_pos) const {
         }
 
         template <class AnyAllocator>
@@ -3680,6 +3623,10 @@ namespace __list_array_impl {
         }
 
         constexpr list_array<T, Allocator> join_copy(const T* insert_items, size_t items_count, size_t start_pos, size_t end_pos) const {
+                }
+
+        template <size_t arr_size>
+        constexpr list_array<T, Allocator>& join(const T (&insert_items)[arr_size]) {
             list_array<T, Allocator> res;
             if (start_pos > end_pos) {
                 std::swap(start_pos, end_pos);
@@ -3687,7 +3634,7 @@ namespace __list_array_impl {
                     throw std::out_of_range("end_pos out of size limit");
                 res.reserve_push_back(_size * (items_count + 1));
                 for (auto& i : reverse_range(start_pos, end_pos)) {
-                    res.push_back(i);
+                    res.push_back(std::move(i));
                     res.push_back(insert_items, items_count);
                 }
             } else {
@@ -3695,16 +3642,11 @@ namespace __list_array_impl {
                     throw std::out_of_range("end_pos out of size limit");
                 res.reserve_push_back(_size * (items_count + 1));
                 for (auto& i : range(start_pos, end_pos)) {
-                    res.push_back(i);
+                    res.push_back(std::move(i));
                     res.push_back(insert_items, items_count);
                 }
             }
-            return res;
-        }
-
-        template <size_t arr_size>
-        constexpr list_array<T, Allocator>& join(const T (&insert_items)[arr_size]) {
-            return operator=(join_copy(insert_items, arr_size, 0, _size));
+            return *this = res;
         }
 
         template <size_t arr_size>
@@ -4673,7 +4615,7 @@ namespace __list_array_impl {
                     if (new_total_blocks >= total_blocks) {
                         tmp.pair.hold_value.arr_end->resize_front(tmp.pair.hold_value.arr_end->_size + last_block_add_len);
                         for (size_t j = 0; j < last_block_add_len; j++)
-                            tmp.pair.hold_value.arr_end->pair.hold_value[avg_block_len + j] = operator[](i++);
+                            std::construct_at(&tmp.pair.hold_value.arr_end->pair.hold_value[avg_block_len + j], std::move(operator[](i++)));
                         break;
                     } else {
                         block_iterator = 0;
@@ -4681,7 +4623,7 @@ namespace __list_array_impl {
                         tmp.pair.hold_value.arr_end = new arr_block<T, Allocator>(tmp.pair.hold_value.arr_end, avg_block_len, nullptr);
                     }
                 }
-                tmp.pair.hold_value.arr_end->pair.hold_value[block_iterator++] = (*cur_iterator);
+                std::construct_at(&tmp.pair.hold_value.arr_end->pair.hold_value[block_iterator++], std::move(*cur_iterator));
                 ++cur_iterator;
             }
             pair.hold_value.clear();
