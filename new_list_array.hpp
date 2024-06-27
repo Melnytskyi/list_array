@@ -164,14 +164,14 @@ namespace __new_list_array_impl {
 
         compressed_allocator<Alloc, T> operator=(const compressed_allocator<Alloc, T>& allocator) {
             if constexpr (std::allocator_traits<Alloc>::propagate_on_container_copy_assignment::value) {
-                allocator = allocator;
+                this->allocator = allocator;
             }
             hold_value = allocator.hold_value;
         }
 
         compressed_allocator<Alloc, T> operator=(compressed_allocator<Alloc, T>&& allocator) {
             if constexpr (std::allocator_traits<Alloc>::propagate_on_container_move_assignment::value) {
-                allocator = std::move(allocator);
+                this->allocator = std::move(allocator);
             }
             hold_value = std::move(allocator.hold_value);
         }
@@ -212,7 +212,11 @@ namespace __new_list_array_impl {
 
     public:
         constexpr bit_array_helper(size_t size)
-            : size(size), data(new uint8_t[(size + 7) / 8]{0}) {}
+            : size(size), data(new uint8_t[(size + 7) / 8]) {
+            size_t compressed_size = (size + 7) / 8;
+            for (size_t i = 0; i < compressed_size; i++)
+                data = 0;
+        }
 
         ~bit_array_helper() {
             delete[] data;
@@ -293,7 +297,7 @@ namespace __new_list_array_impl {
 
         template <class Allocator>
         static constexpr arr_block<T>* create_block(Allocator& allocator, size_t size) {
-            auto block = custom_unique_ptr(new arr_block<T>, allocator, __destroy_block);
+            custom_unique_ptr block(new arr_block<T>, allocator, __destroy_block);
             auto_deallocate<T, Allocator> hold(allocator.allocate(size), allocator, size);
             block->data = hold.data;
             block->data_size = size;
@@ -1197,6 +1201,8 @@ namespace __new_list_array_impl {
         };
 
     private:
+        /// @name internal
+        /// @{
         compressed_allocator<Allocator, size_t> allocator_and_size;
         arr_block<T>* first_block = nullptr; // front
         arr_block<T>* last_block = nullptr;  // back
@@ -1293,6 +1299,9 @@ namespace __new_list_array_impl {
             arr_block<T>* block = last_block;
             if (!last_block)
                 return iterator(nullptr, 0, absolute_index);
+            if (absolute_index == _size())
+                return iterator(last_block, block->data_size, absolute_index);
+
             while (i >= block->data_size) {
                 i -= block->data_size;
                 block = block->prev;
@@ -1310,7 +1319,7 @@ namespace __new_list_array_impl {
         constexpr iterator get_iterator_at_index(size_t index) noexcept {
             return index < capacity() / 2
                        ? get_iterator_at_index_front(index + _reserved_front)
-                       : get_iterator_at_index_back(capacity() - (index + _reserved_front) - 1, index);
+                       : get_iterator_at_index_back(capacity() - (index + _reserved_front) - 1, index + _reserved_front);
         }
 
         /**
@@ -1391,7 +1400,7 @@ namespace __new_list_array_impl {
             size_t block_absolute_end = block_absolute_start + iter.block->data_size;
 
             size_t handle_begin = std::max(block_absolute_start, _reserved_front);
-            size_t handle_end = std::min(block_absolute_end, _size() - _reserved_back);
+            size_t handle_end = std::min(block_absolute_end, _size() + _reserved_front);
 
             if (handle_begin >= block_absolute_end || handle_end <= block_absolute_start)
                 return {0, 0};
@@ -1440,6 +1449,7 @@ namespace __new_list_array_impl {
                 block->next->prev = block->prev;
             else
                 last_block = block->prev;
+
             block->next = block->prev = nullptr;
 
             for (size_t i = startConstructed; i < endConstructed; ++i)
@@ -1456,8 +1466,6 @@ namespace __new_list_array_impl {
          * @param swap_block_1 The second new block to replace with.
          */
         constexpr void swap_block_with_blocks(arr_block<T>* block, size_t handle_begin, size_t handle_end, arr_block<T>* swap_block_0, arr_block<T>* swap_block_1) {
-            swap_block_0->next = swap_block_1;
-            swap_block_1->prev = swap_block_0;
             if (block->prev) {
                 block->prev->next = swap_block_0;
                 swap_block_0->prev = block->prev;
@@ -1474,7 +1482,7 @@ namespace __new_list_array_impl {
                 swap_block_1->next = nullptr;
             }
             block->next = block->prev = nullptr;
-            for (size_t i = handle_end; i < handle_end; ++i)
+            for (size_t i = handle_begin; i < handle_end; ++i)
                 std::destroy_at(block->data + i);
             arr_block<T>::destroy_block(block, allocator_and_size.get_allocator());
         }
@@ -1505,13 +1513,9 @@ namespace __new_list_array_impl {
 
             if (block_1->prev)
                 block_1->prev->next = block_0;
-            else
-                first_block = block_0;
 
             if (block_1->next)
                 block_1->next->prev = block_0;
-            else
-                last_block = block_0;
 
             std::swap(block_0->next, block_1->next);
             std::swap(block_0->prev, block_1->prev);
@@ -1536,7 +1540,7 @@ namespace __new_list_array_impl {
 
             try {
                 for (size_t i = handle_begin; i < half_0_size && i < handle_end; ++half_0_constructed, i++) {
-                    std::construct_at(half_0->data + i, std::move(to_swap->data + i));
+                    std::construct_at(half_0->data + i, std::move(to_swap->data[i]));
                     std::destroy_at(to_swap->data + i);
                 }
 
@@ -1548,8 +1552,8 @@ namespace __new_list_array_impl {
                     std::construct_at(half_1->data, std::forward<Ty>(item));
                 }
 
-                for (size_t i = half_0_size; i < half_1_size && i < handle_end; ++half_1_constructed, i++) {
-                    std::construct_at(half_1->data + i + add_in_, std::move(to_swap->data + i));
+                for (size_t i = half_0_size, j = 0; j < half_1_size && i < handle_end; ++half_1_constructed, i++, j++) {
+                    std::construct_at(half_1->data + j + add_in_, std::move(to_swap->data[i]));
                     std::destroy_at(to_swap->data + i);
                 }
             } catch (...) {
@@ -1582,13 +1586,13 @@ namespace __new_list_array_impl {
 
             try {
                 for (size_t i = handle_begin; i < half_0_size && i < handle_end; ++half_0_constructed, i++)
-                    std::construct_at(half_0->data + i, std::move(to_swap->data + i));
+                    std::construct_at(half_0->data + i, std::move(to_swap->data[i]));
 
                 for (size_t i = 0; i < items_size; ++insert_constructed, i++)
                     std::construct_at(insert->data + i, items[i]);
 
-                for (size_t i = half_0_size; i < half_1_size && i < handle_end; ++half_1_constructed, i++)
-                    std::construct_at(half_1->data + i, std::move(to_swap->data + i));
+                for (size_t i = half_0_size, j = 0; j < half_1_size && i < handle_end; ++half_1_constructed, i++, j++)
+                    std::construct_at(half_1->data + j, std::move(to_swap->data[i]));
             } catch (...) {
                 for (size_t i = 0; i < half_0_constructed; i++)
                     std::destroy_at(half_0->data + i);
@@ -1598,9 +1602,9 @@ namespace __new_list_array_impl {
                     std::destroy_at(half_1->data + i);
                 throw;
             }
-            insert_between(insert, half_0.get(), half_1.get());
+            insert_between(insert.release(), half_0.get(), half_1.get());
             swap_block_with_blocks(to_swap, handle_begin, handle_end, half_0.release(), half_1.release());
-            ++_size();
+            _size() += items_size;
         }
 
         template <bool make_move>
@@ -1621,7 +1625,7 @@ namespace __new_list_array_impl {
             size_t half_1_constructed = 0;
             try {
                 for (size_t i = handle_begin; i < half_0_size && i < handle_end; ++half_0_constructed, i++)
-                    std::construct_at(half_0->data + i, std::move(to_swap->data + i));
+                    std::construct_at(half_0->data + i, std::move(to_swap->data[i]));
 
                 for (size_t i = 0; i < items_size; ++insert_constructed, i++) {
                     if constexpr (make_move)
@@ -1631,8 +1635,8 @@ namespace __new_list_array_impl {
                     ++another_iter;
                 }
 
-                for (size_t i = half_0_size; i < half_1_size && i < handle_end; ++half_1_constructed, i++)
-                    std::construct_at(half_1->data + i, std::move(to_swap->data + i));
+                for (size_t i = half_0_size, j = 0; j < half_1_size && i < handle_end; ++half_1_constructed, i++, j++)
+                    std::construct_at(half_1->data + j, std::move(to_swap->data[i]));
 
             } catch (...) {
                 for (size_t i = 0; i < half_0_constructed; i++)
@@ -1644,14 +1648,14 @@ namespace __new_list_array_impl {
                 throw;
             }
 
-            insert_between(insert.get(), half_0.get(), half_1.get());
+            insert_between(insert.release(), half_0.get(), half_1.get());
             swap_block_with_blocks(to_swap, handle_begin, handle_end, half_0.release(), half_1.release());
-            ++_size();
+            _size() += items_size;
         }
 
         template <class Ty>
         constexpr void insert_item_slow(const_iterator iter, Ty&& item) {
-            auto [startConstructed, endConstructed] = get_handle_range(iter.block);
+            auto [startConstructed, endConstructed] = get_handle_range(iter);
 
             if (iter.relative_index < startConstructed || iter.relative_index > endConstructed)
                 throw std::out_of_range("Insertion point is outside the constructed range.");
@@ -1675,13 +1679,14 @@ namespace __new_list_array_impl {
                     std::destroy_at(new_block->data + i);
                 throw;
             }
-            swap_block(iter.block, new_block);
-            arr_block<T>::destroy_block(iter.block, allocator_and_size.get_allocator());
+            auto old = iter.block;
+            swap_block(iter.block, new_block.release());
+            arr_block<T>::destroy_block(old, allocator_and_size.get_allocator());
             ++_size();
         }
 
         constexpr void insert_item_slow(const_iterator iter, const T* items, size_t items_size) {
-            auto [startConstructed, endConstructed] = get_handle_range(iter.block);
+            auto [startConstructed, endConstructed] = get_handle_range(iter);
 
             if (iter.relative_index < startConstructed || iter.relative_index > endConstructed)
                 throw std::out_of_range("Insertion point is outside the constructed range.");
@@ -1707,9 +1712,10 @@ namespace __new_list_array_impl {
                 throw;
             }
 
-            swap_block(iter.block, new_block);
-            arr_block<T>::destroy_block(iter.block, allocator_and_size.get_allocator());
-            ++_size();
+            auto old = iter.block;
+            swap_block(iter.block, new_block.release());
+            arr_block<T>::destroy_block(old, allocator_and_size.get_allocator());
+            _size() += items_size;
         }
 
         template <bool make_move>
@@ -1744,9 +1750,10 @@ namespace __new_list_array_impl {
                 throw;
             }
 
-            swap_block(iter.block, new_block);
-            arr_block<T>::destroy_block(iter.block, allocator_and_size.get_allocator());
-            ++_size();
+            auto old = iter.block;
+            swap_block(iter.block, new_block.release());
+            arr_block<T>::destroy_block(old, allocator_and_size.get_allocator());
+            _size() += items_size;
         }
 
 #pragma endregion
@@ -1762,6 +1769,8 @@ namespace __new_list_array_impl {
          * @throws std::out_of_range If either `begin` or `end` is outside the constructed range of the array.
          */
         constexpr void erase_range(const_iterator begin, const_iterator end) {
+            if (!begin.block)
+                return;
             if (begin.block == end.block) {
                 auto [beginStartConstructed, beginEndConstructed] = get_handle_range(begin);
                 if (begin.relative_index < beginStartConstructed || end.relative_index > beginEndConstructed)
@@ -1772,6 +1781,11 @@ namespace __new_list_array_impl {
                     throw std::out_of_range("Erase range is outside the constructed range.");
                 size_t erase_size = end.relative_index - begin.relative_index;
                 if (beginStartConstructed == begin.relative_index && endEndConstructed == end.relative_index) {
+                    if (beginStartConstructed != 0)
+                        _reserved_front -= beginStartConstructed;
+                    if (endEndConstructed != begin.block->data_size)
+                        _reserved_back -= begin.block->data_size - endEndConstructed;
+
                     _size() -= erase_size;
                     release_arr_block(begin.block, begin.absolute_index);
                     return;
@@ -1783,7 +1797,6 @@ namespace __new_list_array_impl {
                     for (size_t i = begin.relative_index; i < end.relative_index; ++i)
                         std::destroy_at(begin.block->data + i);
                     _reserved_back += erase_size;
-                    _size() -= erase_size;
                 } else {
                     size_t new_arr_size = begin.block->data_size - erase_size;
                     auto_deallocate hold(allocator_and_size.allocate(new_arr_size), allocator_and_size.get_allocator(), new_arr_size);
@@ -1807,17 +1820,24 @@ namespace __new_list_array_impl {
                     allocator_and_size.deallocate(begin.block->data, begin.block->data_size);
                     begin.block->data = new_arr;
                     begin.block->data_size = new_arr_size;
+                    hold.release();
                 }
                 _size() -= erase_size;
             } else {
-                const_iterator block_iter = end;
-                erase_range(const_iterator(end.block, 0, end.absolute_index), block_iter);
-                block_iter = const_iterator(end.block->prev, 0, end.absolute_index - end.block->data_size);
-                while (block_iter.block != begin.block) {
+                const_iterator block_iter = begin;
+                block_iter.absolute_index += begin.block->data_size - begin.relative_index;
+                block_iter.relative_index = begin.block->data_size;
+
+                const_iterator current = const_iterator(block_iter.block->next, 0, begin.absolute_index - begin.relative_index + begin.block->data_size);
+
+                erase_range(begin, block_iter);
+                block_iter = current;
+                while (block_iter.block != end.block) {
+                    current = const_iterator(block_iter.block->next, 0, block_iter.absolute_index + block_iter.block->data_size);
                     erase_range(const_iterator(block_iter.block, 0, block_iter.absolute_index - block_iter.block->data_size), block_iter);
-                    block_iter = const_iterator(block_iter.block->prev, 0, block_iter.absolute_index - block_iter.block->data_size);
+                    block_iter = current;
                 }
-                erase_range(begin, const_iterator(begin.block, begin.block->data_size, begin.absolute_index + begin.block->data_size - begin.relative_index));
+                erase_range(block_iter, end);
             }
         }
 
@@ -1868,8 +1888,8 @@ namespace __new_list_array_impl {
          * @param end An iterator to the end of the range to select from.
          */
         template <class FN>
-        constexpr void select_for_block_unsafe(FN&& fn, bit_array_helper& selector, const_iterator begin, const_iterator end) {
-            if constexpr (std::is_invocable_v<FN, size_t, T>) {
+        constexpr void select_for_block_unsafe(FN&& fn, bit_array_helper& selector, const_iterator begin, const_iterator end) noexcept(std::is_nothrow_invocable_r_v<bool, FN, size_t, const T&> || std::is_nothrow_invocable_r_v<bool, FN, const T&>) {
+            if constexpr (std::is_invocable_r_v<bool, FN, size_t, const T&>) {
                 size_t index_off = begin.absolute_index - begin.relative_index;
                 for (size_t i = begin.relative_index; i < end.relative_index; ++i)
                     selector.set(i, fn(i + index_off, *(begin + i)));
@@ -1910,6 +1930,7 @@ namespace __new_list_array_impl {
             }
         }
 
+        /// @}
     public:
         /**
          * @brief Removes all elements from the array.
@@ -1922,6 +1943,8 @@ namespace __new_list_array_impl {
 
 #pragma region constructors
 
+        /// @name constructors
+        /// @{
         /**
          * @brief Default constructor for the `list_array` class.
          *
@@ -1940,7 +1963,6 @@ namespace __new_list_array_impl {
          * @tparam Container The type of the container to copy or move elements from.
          * @param cont The container object to copy or move elements from.
          * @param allocator The allocator object to use for memory management (defaults to the default allocator for type `T`).
-         * @tparam Requires the `Container` type must satisfy the `is_container` concept.
          */
         template <class Container>
         constexpr list_array(Container&& cont, const Allocator& allocator = Allocator())
@@ -1948,7 +1970,7 @@ namespace __new_list_array_impl {
             : allocator_and_size(allocator) {
             reserve(cont.size());
             size_t i = 0;
-            for (const T& it : cont)
+            for (T& it : cont)
                 push_back(std::move(it));
         }
 
@@ -1960,7 +1982,6 @@ namespace __new_list_array_impl {
          * @tparam Container The type of the container to copy elements from.
          * @param cont The container object to copy elements from.
          * @param allocator The allocator object to use for memory management (defaults to the default allocator for type `T`).
-         * @tparam Requires the `Container` type must satisfy the `is_container` concept.
          */
         template <class Container>
         constexpr list_array(const Container& cont, const Allocator& allocator = Allocator())
@@ -2151,9 +2172,12 @@ namespace __new_list_array_impl {
         constexpr list_array(const list_array& copy, size_t start, size_t end, const Allocator& allocator = Allocator())
             : list_array(copy.get_iterator(start), copy.get_iterator(end), end - start, allocator) {}
 
+/// @}
 #pragma endregion
 #pragma region operators
 
+        /// @name operators
+        /// @{
         /**
          * @brief Assigns new contents to the container, replacing its current contents.
          *
@@ -2198,29 +2222,31 @@ namespace __new_list_array_impl {
             return *this;
         }
 
+/// @}
 #pragma endregion
 #pragma region push
 
+        /// @name push
+        /// @{
         /**
         * @brief Adds a copy of the value to the end of the array.
         *
         * @param value The value to be added.
         */
-        constexpr void push_back(const T& value) & {
+        constexpr list_array<T, Allocator>& push_back(const T& value) & {
             if (_reserved_back) {
                 std::construct_at(get_direct_element_at_index(_reserved_front + _size()), value);
                 ++_size();
                 --_reserved_back;
-                return;
+                return *this;
             } else if (_reserved_front) {
                 if (first_block->data_size <= _reserved_front) {
                     steal_reserve_block_front_to_back();
-                    push_back(value);
-                    return;
+                    return push_back(value);
                 }
             }
             reserve_back(increase_policy());
-            push_back(value);
+            return push_back(value);
         }
 
         /**
@@ -2228,21 +2254,20 @@ namespace __new_list_array_impl {
          * 
          * @param value The value to be moved into the array.
          */
-        constexpr void push_back(T&& value) & {
+        constexpr list_array<T, Allocator>& push_back(T&& value) & {
             if (_reserved_back) {
                 std::construct_at(get_direct_element_at_index(_reserved_front + _size()), std::move(value));
                 ++_size();
                 --_reserved_back;
-                return;
+                return *this;
             } else if (_reserved_front) {
                 if (first_block->data_size <= _reserved_front) {
                     steal_reserve_block_front_to_back();
-                    push_back(std::move(value));
-                    return;
+                    return push_back(std::move(value));
                 }
             }
             reserve_back(increase_policy());
-            push_back(std::move(value));
+            return push_back(std::move(value));
         }
 
         /**
@@ -2252,11 +2277,12 @@ namespace __new_list_array_impl {
          * @param alloc The other `list_array` whose elements will be copied.
          */
         template <class AnyAllocator>
-        constexpr void push_back(const list_array<T, AnyAllocator>& alloc) & {
+        constexpr list_array<T, Allocator>& push_back(const list_array<T, AnyAllocator>& alloc) & {
             if (_reserved_back < alloc.size())
                 reserve_back(alloc.size() - _reserved_back);
             for (const auto& value : alloc)
                 push_back(value);
+            return *this;
         }
 
         /**
@@ -2266,11 +2292,12 @@ namespace __new_list_array_impl {
          * @param alloc The other `list_array` whose elements will be moved.
          */
         template <class AnyAllocator>
-        constexpr void push_back(list_array<T, AnyAllocator>&& alloc) & {
+        constexpr list_array<T, Allocator>& push_back(list_array<T, AnyAllocator>&& alloc) & {
             if (_reserved_back < alloc.size())
                 reserve_back(alloc.size() - _reserved_back);
             for (auto& value : alloc)
                 push_back(std::move(value));
+            return *this;
         }
 
         /**
@@ -2279,11 +2306,12 @@ namespace __new_list_array_impl {
          * @param begin An iterator to the beginning of the range.
          * @param end An iterator to the end of the range.
          */
-        constexpr void push_back(const T* begin, const T* end) & {
+        constexpr list_array<T, Allocator>& push_back(const T* begin, const T* end) & {
             if (_reserved_back < end - begin)
                 reserve_back(end - begin - _reserved_back);
             for (const T* it = begin; it != end; it++)
                 push_back(*it);
+            return *this;
         }
 
         /**
@@ -2293,8 +2321,8 @@ namespace __new_list_array_impl {
          * @param arr The C-style array to append.
          */
         template <size_t N>
-        constexpr void push_back(const T (&arr)[N]) & {
-            push_back(arr, arr + N);
+        constexpr list_array<T, Allocator>& push_back(const T (&arr)[N]) & {
+            return push_back(arr, arr + N);
         }
 
         /**
@@ -2303,8 +2331,8 @@ namespace __new_list_array_impl {
          * @param arr A pointer to the beginning of the array.
          * @param size The number of elements to append.
          */
-        constexpr void push_back(const T* arr, size_t size) & {
-            push_back(arr, arr + size);
+        constexpr list_array<T, Allocator>& push_back(const T* arr, size_t size) & {
+            return push_back(arr, arr + size);
         }
 
         /**
@@ -2314,21 +2342,20 @@ namespace __new_list_array_impl {
          * @param args The arguments to be forwarded to the constructor of T.
          */
         template <class... Args>
-        constexpr void emplace_back(Args&&... args) & {
+        constexpr list_array<T, Allocator>& emplace_back(Args&&... args) & {
             if (_reserved_back) {
                 --_reserved_back;
                 std::construct_at(get_direct_element_at_index(_reserved_front + _size()), std::forward<Args>(args)...);
                 ++_size();
-                return;
+                return *this;
             } else if (_reserved_front) {
                 if (first_block->data_size <= _reserved_front) {
                     steal_reserve_block_front_to_back();
-                    emplace_back(std::forward<Args>(args)...);
-                    return;
+                    return emplace_back(std::forward<Args>(args)...);
                 }
             }
             reserve_back(increase_policy());
-            emplace_back(std::forward<Args>(args)...);
+            return emplace_back(std::forward<Args>(args)...);
         }
 
         /**
@@ -2336,21 +2363,20 @@ namespace __new_list_array_impl {
          * 
          * @param value The value to be added.
          */
-        constexpr void push_front(const T& value) & {
+        constexpr list_array<T, Allocator>& push_front(const T& value) & {
             if (_reserved_front) {
                 std::construct_at(get_direct_element_at_index(_reserved_front - 1), value);
                 ++_size();
                 --_reserved_front;
-                return;
+                return *this;
             } else if (_reserved_back) {
                 if (last_block->data_size <= _reserved_back) {
                     steal_reserve_block_back_to_front();
-                    push_front(value);
-                    return;
+                    return push_front(value);
                 }
             }
             reserve_front(increase_policy());
-            push_front(value);
+            return push_front(value);
         }
 
         /**
@@ -2358,21 +2384,20 @@ namespace __new_list_array_impl {
          * 
          * @param value The value to be moved into the array.
          */
-        constexpr void push_front(T&& value) & {
+        constexpr list_array<T, Allocator>& push_front(T&& value) & {
             if (_reserved_front) {
                 std::construct_at(get_direct_element_at_index(_reserved_front - 1), std::move(value));
                 ++_size();
                 --_reserved_front;
-                return;
+                return *this;
             } else if (_reserved_back) {
                 if (last_block->data_size <= _reserved_back) {
                     steal_reserve_block_back_to_front();
-                    push_front(std::move(value));
-                    return;
+                    return push_front(std::move(value));
                 }
             }
             reserve_front(increase_policy());
-            push_front(std::move(value));
+            return push_front(std::move(value));
         }
 
         /**
@@ -2382,11 +2407,12 @@ namespace __new_list_array_impl {
          * @param alloc The other `list_array` whose elements will be copied.
          */
         template <class AnyAllocator>
-        constexpr void push_front(const list_array<T, AnyAllocator>& alloc) & {
+        constexpr list_array<T, Allocator>& push_front(const list_array<T, AnyAllocator>& alloc) & {
             if (_reserved_front < alloc.size())
                 reserve_front(alloc.size() - _reserved_front);
             for (const auto& value : alloc)
                 push_front(value);
+            return *this;
         }
 
         /**
@@ -2396,11 +2422,12 @@ namespace __new_list_array_impl {
          * @param alloc The other `list_array` whose elements will be moved.
          */
         template <class AnyAllocator>
-        constexpr void push_front(list_array<T, AnyAllocator>&& alloc) & {
+        constexpr list_array<T, Allocator>& push_front(list_array<T, AnyAllocator>&& alloc) & {
             if (_reserved_front < alloc.size())
                 reserve_front(alloc.size() - _reserved_front);
             for (auto& value : alloc)
                 push_front(std::move(value));
+            return *this;
         }
 
         /**
@@ -2409,11 +2436,12 @@ namespace __new_list_array_impl {
          * @param begin An iterator to the beginning of the range.
          * @param end An iterator to the end of the range.
          */
-        constexpr void push_front(const T* begin, const T* end) & {
+        constexpr list_array<T, Allocator>& push_front(const T* begin, const T* end) & {
             if (_reserved_front < end - begin)
                 reserve_front(end - begin - _reserved_front);
             for (const T* it = begin; it != end; it++)
                 push_front(*it);
+            return *this;
         }
 
         /**
@@ -2423,8 +2451,8 @@ namespace __new_list_array_impl {
          * @param arr The C-style array to append.
          */
         template <size_t N>
-        constexpr void push_front(const T (&arr)[N]) & {
-            push_front(arr, arr + N);
+        constexpr list_array<T, Allocator>& push_front(const T (&arr)[N]) & {
+            return push_front(arr, arr + N);
         }
 
         /**
@@ -2433,8 +2461,8 @@ namespace __new_list_array_impl {
          * @param arr A pointer to the beginning of the array.
          * @param size The number of elements to append.
          */
-        constexpr void push_front(const T* arr, size_t size) & {
-            push_front(arr, arr + size);
+        constexpr list_array<T, Allocator>& push_front(const T* arr, size_t size) & {
+            return push_front(arr, arr + size);
         }
 
         /**
@@ -2444,26 +2472,224 @@ namespace __new_list_array_impl {
          * @param args The arguments to be forwarded to the constructor of T.
          */
         template <class... Args>
-        constexpr void emplace_front(Args&&... args) & {
+        constexpr list_array<T, Allocator>& emplace_front(Args&&... args) & {
             if (_reserved_front) {
                 ++_size();
                 std::construct_at(get_direct_element_at_index(_reserved_front - 1), std::forward<Args>(args)...);
                 --_reserved_front;
-                return;
+                return *this;
             } else if (_reserved_back) {
                 if (last_block->data_size <= _reserved_back) {
                     steal_reserve_block_back_to_front();
-                    emplace_front(std::forward<Args>(args)...);
-                    return;
+                    return emplace_front(std::forward<Args>(args)...);
                 }
             }
             reserve_front(increase_policy());
-            emplace_front(std::forward<Args>(args)...);
+            return emplace_front(std::forward<Args>(args)...);
         }
 
+        /**
+        * @brief Adds a copy of the value to the end of the array.
+        *
+        * @param value The value to be added.
+        * @return list_array<T, Allocator> A new list_array with the last element removed.
+        */
+        constexpr [[nodiscard]] list_array<T, Allocator> push_back(const T& value) && {
+            push_back(value);
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Adds a value to the end of the array using move semantics.
+         * 
+         * @param value The value to be moved into the array.
+         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         */
+        constexpr [[nodiscard]] list_array<T, Allocator> push_back(T&& value) && {
+            push_back(std::move(value));
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Appends a copy of another `list_array` to the end of this array.
+         * 
+         * @tparam AnyAllocator The allocator type of the other `list_array`.
+         * @param alloc The other `list_array` whose elements will be copied.
+         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         */
+        template <class AnyAllocator>
+        constexpr [[nodiscard]] list_array<T, Allocator> push_back(const list_array<T, AnyAllocator>& alloc) && {
+            push_back(alloc);
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Appends another `list_array` to the end of this array using move semantics.
+         * 
+         * @tparam AnyAllocator The allocator type of the other `list_array`.
+         * @param alloc The other `list_array` whose elements will be moved.
+         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         */
+        template <class AnyAllocator>
+        constexpr [[nodiscard]] list_array<T, Allocator> push_back(list_array<T, AnyAllocator>&& alloc) && {
+            push_back(std::move(alloc));
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Appends a range of elements to the end of the array.
+         * 
+         * @param begin An iterator to the beginning of the range.
+         * @param end An iterator to the end of the range.
+         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         */
+        constexpr [[nodiscard]] list_array<T, Allocator> push_back(const T* begin, const T* end) && {
+            push_front(begin, end);
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Appends a C-style array to the end of the array.
+         * 
+         * @tparam N The size of the C-style array.
+         * @param arr The C-style array to append.
+         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         */
+        template <size_t N>
+        constexpr [[nodiscard]] list_array<T, Allocator> push_back(const T (&arr)[N]) && {
+            push_back(arr, arr + N);
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Appends elements from an array to the end, given a pointer and size.
+         * 
+         * @param arr A pointer to the beginning of the array.
+         * @param size The number of elements to append.
+         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         */
+        constexpr [[nodiscard]] list_array<T, Allocator> push_back(const T* arr, size_t size) && {
+            push_back(arr, arr + size);
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Constructs an element in-place at the end of the array.
+         * 
+         * @tparam Args The types of the arguments to be forwarded to the constructor of T.
+         * @param args The arguments to be forwarded to the constructor of T.
+         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         */
+        template <class... Args>
+        constexpr [[nodiscard]] list_array<T, Allocator> emplace_back(Args&&... args) && {
+            emplace_back(std::forward<Args>(args)...);
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Adds a copy of the value to the beginning of the array.
+         * 
+         * @param value The value to be added.
+         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         */
+        constexpr [[nodiscard]] list_array<T, Allocator> push_front(const T& value) && {
+            push_front(value);
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Adds a value to the beginning of the array using move semantics.
+         * 
+         * @param value The value to be moved into the array.
+         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         */
+        constexpr [[nodiscard]] list_array<T, Allocator> push_front(T&& value) && {
+            push_front(std::move(value));
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Appends a copy of another `list_array` to the beginning of this array.
+         * 
+         * @tparam AnyAllocator The allocator type of the other `list_array`.
+         * @param alloc The other `list_array` whose elements will be copied.
+         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         */
+        template <class AnyAllocator>
+        constexpr [[nodiscard]] list_array<T, Allocator> push_front(const list_array<T, AnyAllocator>& alloc) && {
+            push_front(alloc);
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Appends another `list_array` to the beginning of this array using move semantics.
+         * 
+         * @tparam AnyAllocator The allocator type of the other `list_array`.
+         * @param alloc The other `list_array` whose elements will be moved.
+         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         */
+        template <class AnyAllocator>
+        constexpr [[nodiscard]] list_array<T, Allocator> push_front(list_array<T, AnyAllocator>&& alloc) && {
+            push_front(std::move(alloc));
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Appends a range of elements to the beginning of the array.
+         * 
+         * @param begin An iterator to the beginning of the range.
+         * @param end An iterator to the end of the range.
+         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         */
+        constexpr [[nodiscard]] list_array<T, Allocator> push_front(const T* begin, const T* end) && {
+            push_front(begin, end);
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Appends a C-style array to the beginning of the array.
+         * 
+         * @tparam N The size of the C-style array.
+         * @param arr The C-style array to append.
+         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         */
+        template <size_t N>
+        constexpr [[nodiscard]] list_array<T, Allocator> push_front(const T (&arr)[N]) && {
+            push_front(arr, arr + N);
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Appends elements from an array to the beginning, given a pointer and size.
+         * 
+         * @param arr A pointer to the beginning of the array.
+         * @param size The number of elements to append.
+         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         */
+        constexpr [[nodiscard]] list_array<T, Allocator> push_front(const T* arr, size_t size) && {
+            push_front(arr, arr + size);
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Constructs an element in-place at the beginning of the array.
+         * 
+         * @tparam Args The types of the arguments to be forwarded to the constructor of T.
+         * @param args The arguments to be forwarded to the constructor of T.
+         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         */
+        template <class... Args>
+        constexpr [[nodiscard]] list_array<T, Allocator> emplace_front(Args&&... args) && {
+            emplace_front(std::forward<Args>(args)...);
+            return std::move(*this);
+        }
+
+/// @}
 #pragma endregion
 #pragma region list_ops
 
+        /// @name list operations
+        /// @{
         /**
          * @brief Pops and returns the last element from the `list_array` (move version).
          *
@@ -2492,26 +2718,32 @@ namespace __new_list_array_impl {
          * @brief Removes the last element from the array.
          *
          * This function is noexcept if and only if the destructor of `T` is noexcept.
+         * 
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void pop_back() & noexcept(std::is_nothrow_constructible_v<T>) {
+        constexpr list_array<T, Allocator>& pop_back() & noexcept(std::is_nothrow_constructible_v<T>) {
             if (_size() == 0)
-                return;
+                return *this;
             std::destroy_at(&operator[](_size() - 1));
             --_size();
             ++_reserved_back;
+            return *this;
         }
 
         /**
          * @brief Removes the first element from the array.
          *
          * This function is noexcept if and only if the destructor of `T` is noexcept.
+         * 
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void pop_front() & noexcept(std::is_nothrow_constructible_v<T>) {
+        constexpr list_array<T, Allocator>& pop_front() & noexcept(std::is_nothrow_constructible_v<T>) {
             if (_size() == 0)
-                return;
+                return *this;
             std::destroy_at(&operator[](0));
             --_size();
             ++_reserved_front;
+            return *this;
         }
 
         /**
@@ -2610,9 +2842,12 @@ namespace __new_list_array_impl {
             return value;
         }
 
+/// @}
 #pragma endregion
 #pragma region insert
 
+        /// @name insert
+        /// @{
         /**
          * @brief Inserts an element at the specified index.
          *
@@ -2620,8 +2855,9 @@ namespace __new_list_array_impl {
          *
          * @param index The index at which to insert the element.
          * @param value The value to insert.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void insert(size_t index, const T& value) & {
+        constexpr list_array<T, Allocator>& insert(size_t index, const T& value) & {
             if (index == 0)
                 push_front(value);
             else if (index == _size())
@@ -2633,6 +2869,7 @@ namespace __new_list_array_impl {
                 else
                     insert_item_slow(iter, value);
             }
+            return *this;
         }
 
         /**
@@ -2642,8 +2879,9 @@ namespace __new_list_array_impl {
          *
          * @param index The index at which to insert the element.
          * @param value The value to move into the array.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void insert(size_t index, T&& value) & {
+        constexpr list_array<T, Allocator>& insert(size_t index, T&& value) & {
             if (index == 0)
                 push_front(value);
             else if (index == _size())
@@ -2655,6 +2893,7 @@ namespace __new_list_array_impl {
                 else
                     insert_item_slow(iter, std::move(value));
             }
+            return *this;
         }
 
         /**
@@ -2665,8 +2904,9 @@ namespace __new_list_array_impl {
          * @param index The index at which to insert the elements.
          * @param values A pointer to the beginning of the range of elements to insert.
          * @param size The number of elements to insert.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void insert(size_t index, const T* values, size_t size) & {
+        constexpr list_array<T, Allocator>& insert(size_t index, const T* values, size_t size) & {
             if (index == 0)
                 push_front(values, size);
             else if (index == _size())
@@ -2678,6 +2918,7 @@ namespace __new_list_array_impl {
                 else
                     insert_item_slow(iter, values, size);
             }
+            return *this;
         }
 
         /**
@@ -2688,9 +2929,10 @@ namespace __new_list_array_impl {
          * @param index The index at which to insert the elements.
          * @param begin An iterator to the beginning of the range of elements to insert.
          * @param end An iterator to the end of the range of elements to insert.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void insert(size_t index, const T* begin, const T* end) & {
-            insert(index, begin, end - begin);
+        constexpr list_array<T, Allocator>& insert(size_t index, const T* begin, const T* end) & {
+            return insert(index, begin, end - begin);
         }
 
         /**
@@ -2701,10 +2943,11 @@ namespace __new_list_array_impl {
          * @tparam N The size of the C-style array `arr`.
          * @param index The index at which to insert the elements.
          * @param arr The C-style array to insert.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
         template <size_t N>
-        constexpr void insert(size_t index, const T (&arr)[N]) & {
-            insert(index, arr, N);
+        constexpr list_array<T, Allocator>& insert(size_t index, const T (&arr)[N]) & {
+            return insert(index, arr, N);
         }
 
         /**
@@ -2715,9 +2958,10 @@ namespace __new_list_array_impl {
          * @tparam AnyAllocator The allocator type of the `list_array` `values`.
          * @param index The index at which to insert the elements.
          * @param values The `list_array` containing the elements to insert.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
         template <class AnyAllocator>
-        constexpr void insert(size_t index, const list_array<T, AnyAllocator>& values) & {
+        constexpr list_array<T, Allocator>& insert(size_t index, const list_array<T, AnyAllocator>& values) & {
             if (index == 0)
                 push_front(values);
             else if (index == _size())
@@ -2729,6 +2973,7 @@ namespace __new_list_array_impl {
                 else
                     insert_item_slow<false>(iter, values.begin(), values.size());
             }
+            return *this;
         }
 
         /**
@@ -2739,9 +2984,10 @@ namespace __new_list_array_impl {
          * @tparam AnyAllocator The allocator type of the `list_array` `values`.
          * @param index The index at which to insert the elements.
          * @param values The `list_array` containing the elements to move into the array.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
         template <class AnyAllocator>
-        constexpr void insert(size_t index, list_array<T, AnyAllocator>&& values) & {
+        constexpr list_array<T, Allocator>& insert(size_t index, list_array<T, AnyAllocator>&& values) & {
             if (index == 0)
                 push_front(values);
             else if (index == _size())
@@ -2753,6 +2999,7 @@ namespace __new_list_array_impl {
                 else
                     insert_item_slow<true>(iter, values.begin(), values.size());
             }
+            return *this;
         }
 
         /**
@@ -2861,16 +3108,18 @@ namespace __new_list_array_impl {
             return std::move(*this);
         }
 
+/// @}
 #pragma endregion
 #pragma region remove
 
+        /// @name remove
+        /// @{
         /**
          * @brief Removes all elements equal to a specific value from the array.
          *
          * @param val The value to remove.
          * @return The number of elements removed.
          *
-         * @tparam Requires that T is equality comparable.
          */
         constexpr size_t remove(const T& val) &
             requires std::equality_comparable<T>
@@ -2887,7 +3136,9 @@ namespace __new_list_array_impl {
          * @return The number of elements removed.
          */
         template <class FN>
-        constexpr size_t remove_if(FN&& fn) & {
+        constexpr size_t remove_if(FN&& fn) &
+            requires std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>
+        {
             size_t old_size = _size();
             remove_in(std::forward<FN>(fn), begin(), end());
             return old_size - _size();
@@ -2904,7 +3155,9 @@ namespace __new_list_array_impl {
          * @return The number of elements removed.
          */
         template <class FN>
-        constexpr size_t remove_if(size_t begin, FN&& fn) & {
+        constexpr size_t remove_if(size_t begin, FN&& fn) &
+            requires std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>
+        {
             size_t old_size = _size();
             remove_in(std::forward<FN>(fn), get_iterator(begin), end());
             return old_size - _size();
@@ -2922,7 +3175,9 @@ namespace __new_list_array_impl {
          * @return The number of elements removed.
          */
         template <class FN>
-        constexpr size_t remove_if(size_t begin, size_t end, FN&& fn) & {
+        constexpr size_t remove_if(size_t begin, size_t end, FN&& fn) &
+            requires std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>
+        {
             size_t old_size = _size();
             remove_in(std::forward<FN>(fn), get_iterator(begin), get_iterator(end));
             return old_size - _size();
@@ -2935,7 +3190,6 @@ namespace __new_list_array_impl {
          *
          * @param val The value to remove.
          * @return A new `list_array` object with all occurrences of `val` removed.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] list_array<T, Allocator> remove(const T& val) &&
             requires std::equality_comparable<T>
@@ -2954,7 +3208,9 @@ namespace __new_list_array_impl {
          * @return A new `list_array` object with all elements satisfying the predicate removed.
          */
         template <class FN>
-        constexpr [[nodiscard]] list_array<T, Allocator> remove_if(FN&& fn) && {
+        constexpr [[nodiscard]] list_array<T, Allocator> remove_if(FN&& fn) &&
+            requires std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>
+        {
             remove_if(0, _size(), std::forward<FN>(fn));
             return std::move(*this);
         }
@@ -2970,7 +3226,9 @@ namespace __new_list_array_impl {
          * @return A new `list_array` object with all elements satisfying the predicate removed, starting from `begin`.
          */
         template <class FN>
-        constexpr [[nodiscard]] list_array<T, Allocator> remove_if(size_t begin, FN&& fn) && {
+        constexpr [[nodiscard]] list_array<T, Allocator> remove_if(size_t begin, FN&& fn) &&
+            requires std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>
+        {
             remove_if(begin, _size(), std::forward<FN>(fn));
             return std::move(*this);
         }
@@ -2987,72 +3245,82 @@ namespace __new_list_array_impl {
          * @return A new `list_array` object with all elements satisfying the predicate removed within the specified range.
          */
         template <class FN>
-        constexpr [[nodiscard]] list_array<T, Allocator> remove_if(size_t begin, size_t end, FN&& fn) && {
+        constexpr [[nodiscard]] list_array<T, Allocator> remove_if(size_t begin, size_t end, FN&& fn) &&
+            requires std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>
+        {
             remove_if(begin, end, std::forward<FN>(fn));
             return std::move(*this);
         }
 
+/// @}
 #pragma endregion
 #pragma region remove_one
 
+        /// @name remove_one
+        /// @{
         /**
-         * @brief Removes the first occurrence of a specific value from the array.
+         * @brief Removes the first occurrence from the array.
          *
-         * This function searches for the first element in the array that is equal to the given `val` and removes it. If the value is not found, the array remains unchanged.
+         * This function searches for the first element in the array that satisfies predicate and removes it. If the element is not found, the array remains unchanged.
          *
-         * @param val The value to remove.
+         * @tparam FN The type of the predicate function.
+         * @param check_function The predicate function returning true for element to be removed.
          * @return `true` if the value was found and removed, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
-        template <class _Fn>
-        constexpr bool remove_one(_Fn&& check_function) & {
-            return remove_one(0, _size(), check_function);
+        template <class FN>
+        constexpr bool remove_one(FN&& check_function) & {
+            return remove_one(0, _size(), std::forward<FN>(check_function));
         }
 
         /**
-         * @brief Removes the first occurrence of a specific value from the array, starting from a given position.
+         * @brief Removes the first occurrence from the array, starting from a given position.
          *
-         * This function searches for the first element in the array, starting from the specified `start` index, that is equal to the given `val` and removes it. If the value is not found, the array remains unchanged.
+         * This function searches for the first element in the array, starting from the specified `start` index, that satisfies predicate and removes it. If the value is not found, the array remains unchanged.
          *
+         * @tparam FN The type of the predicate function.
          * @param start The starting index for the search.
-         * @param val The value to remove.
+         * @param check_function The predicate function returning true for element to be removed.
          * @return `true` if the value was found and removed, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
-        template <class _Fn>
-        constexpr bool remove_one(size_t start, _Fn&& check_function) & {
-            return remove_one(start, _size(), check_function);
+        template <class FN>
+        constexpr bool remove_one(size_t start, FN&& check_function) & {
+            return remove_one(start, _size(), std::forward<FN>(check_function));
         }
 
         /**
-         * @brief Removes the first occurrence of a specific value from the array within a specified range.
+         * @brief Removes the first occurrence from the array within a specified range.
          *
-         * This function searches for the first element in the array, within the range from `start` to `end`, that is equal to the given `val` and removes it. If the value is not found, the array remains unchanged.
+         * This function searches for the first element in the array, within the range from `start` to `end`, that satisfies predicate and removes it. If the value is not found, the array remains unchanged.
          *
+         * @tparam FN The type of the predicate function.
          * @param start The starting index of the range to search (inclusive).
          * @param end The ending index of the range to search (exclusive).
-         * @param val The value to remove.
+         * @param check_function The predicate function returning true for element to be removed.
          * @return `true` if the value was found and removed, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
-        template <class _Fn>
-        constexpr bool remove_one(size_t start, size_t end, _Fn&& check_function) & {
-            size_t item = find_if(start, end, check_function);
+        template <class FN>
+        constexpr bool remove_one(size_t start, size_t end, FN&& check_function) &
+            requires std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>
+        {
+            size_t item = find_if(start, end, std::forward<FN>(check_function));
             if (item == npos)
                 return false;
             erase(item);
             return true;
         }
 
+/// @}
 #pragma endregion
 #pragma region remove_same
 
+        /// @name remove_same
+        /// @{
         /**
          * @brief Removes all occurrences of a specific value from the array within a specified range.
          *
          * This function searches for all elements in the array, within the range from `start` to `end`, that are equal to the given `val` and removes them. It uses a custom comparison function (`comparer`) to determine equality.
          *
-         * @tparam _Fn The type of the comparison function. It should take two const references to `T` and return `true` if they are considered equal, `false` otherwise.
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered equal, `false` otherwise.
          * @param val The value to remove.
          * @param start The starting index of the range to search (inclusive).
          * @param end The ending index of the range to search (exclusive).
@@ -3060,13 +3328,15 @@ namespace __new_list_array_impl {
          * @return The number of elements removed.
          * @throws std::out_of_range If `end` exceeds the size of the array.
          */
-        template <class _Fn>
+        template <class FN>
         constexpr size_t remove_same(
             const T& val,
             size_t start,
             size_t end,
-            _Fn&& comparer = [](const T& f, const T& s) constexpr { return f == s; }
-        ) & {
+            FN&& comparer = [](const T& f, const T& s) constexpr { return f == s; }
+        ) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
             if (end > _size())
                 throw std::out_of_range("end value out of size limit");
             if (start > _size())
@@ -3079,38 +3349,42 @@ namespace __new_list_array_impl {
         /**
          * @brief Removes all occurrences of a specific value from the array, starting from a given position.
          *
-         * This function is similar to `remove_same(const T&, size_t, size_t, _Fn&&)`, but it searches from the specified `start` index to the end of the array.
+         * This function is similar to `remove_same(const T&, size_t, size_t, FN&&)`, but it searches from the specified `start` index to the end of the array.
          *
-         * @tparam _Fn The type of the comparison function.
+         * @tparam FN The type of the comparison function.
          * @param val The value to remove.
          * @param start The starting index for the search.
          * @param comparer The custom comparison function to use (defaults to `==`).
          * @return The number of elements removed.
          */
-        template <class _Fn>
+        template <class FN>
         constexpr size_t remove_same(
             const T& val,
             size_t start,
-            _Fn&& comparer = [](const T& f, const T& s) constexpr { return f == s; }
-        ) & {
-            return remove_same(val, start, _size(), comparer);
+            FN&& comparer = [](const T& f, const T& s) constexpr { return f == s; }
+        ) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            return remove_same(val, start, _size(), std::forward<FN>(comparer));
         }
 
         /**
          * @brief Removes all occurrences of a specific value from the entire array.
          *
-         * This function is similar to `remove_same(const T&, size_t, size_t, _Fn&&)`, but it searches the entire array.
+         * This function is similar to `remove_same(const T&, size_t, size_t, FN&&)`, but it searches the entire array.
          *
-         * @tparam _Fn The type of the comparison function.
+         * @tparam FN The type of the comparison function.
          * @param val The value to remove.
          * @param comparer The custom comparison function to use (defaults to `==`).
          * @return The number of elements removed.
          */
-        template <class _Fn>
+        template <class FN>
         constexpr size_t remove_same(
             const T& val,
-            _Fn&& comparer = [](const T& f, const T& s) constexpr { return f == s; }
-        ) & {
+            FN&& comparer = [](const T& f, const T& s) constexpr { return f == s; }
+        ) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
             return remove_if(_reserved_front, _reserved_front + _size(), [&comparer, &val](const T& cval) { return comparer(val, cval); });
         }
 
@@ -3125,7 +3399,9 @@ namespace __new_list_array_impl {
          * @return The number of elements removed.
          */
         template <size_t arr_size>
-        constexpr size_t remove_same(const T (&val)[arr_size], size_t start = 0) & {
+        constexpr size_t remove_same(const T (&val)[arr_size], size_t start = 0) &
+            requires std::equality_comparable<T>
+        {
             return remove_same(val, arr_size, start, _size());
         }
 
@@ -3141,7 +3417,9 @@ namespace __new_list_array_impl {
          * @return The number of elements removed.
          */
         template <size_t arr_size>
-        constexpr size_t remove_same(const T (&val)[arr_size], size_t start, size_t end) & {
+        constexpr size_t remove_same(const T (&val)[arr_size], size_t start, size_t end) &
+            requires std::equality_comparable<T>
+        {
             return remove_same(val, arr_size, start, end);
         }
 
@@ -3155,7 +3433,9 @@ namespace __new_list_array_impl {
          * @param start The starting index of the range to search (inclusive).
          * @return The number of elements removed.
          */
-        constexpr size_t remove_same(const T* val, size_t arr_size, size_t start = 0) & {
+        constexpr size_t remove_same(const T* val, size_t arr_size, size_t start = 0) &
+            requires std::equality_comparable<T>
+        {
             return remove_same(val, arr_size, start, _size());
         }
 
@@ -3170,7 +3450,9 @@ namespace __new_list_array_impl {
          * @param end The ending index of the range to search (exclusive).
          * @return The number of elements removed.
          */
-        constexpr size_t remove_same(const T* val, size_t arr_size, size_t start, size_t end) & {
+        constexpr size_t remove_same(const T* val, size_t arr_size, size_t start, size_t end) &
+            requires std::equality_comparable<T>
+        {
             size_t old_size = _size();
             size_t pos = start;
             if (start < end)
@@ -3197,7 +3479,9 @@ namespace __new_list_array_impl {
          * @return The number of elements removed.
          */
         template <class AnyAllocator>
-        constexpr size_t remove_same(const list_array<T, AnyAllocator>& val, size_t start = 0) & {
+        constexpr size_t remove_same(const list_array<T, AnyAllocator>& val, size_t start = 0) &
+            requires std::equality_comparable<T>
+        {
             return remove_same(val, 0, val.size(), start, _size());
         }
 
@@ -3213,7 +3497,9 @@ namespace __new_list_array_impl {
          * @return The number of elements removed.
          */
         template <class AnyAllocator>
-        constexpr size_t remove_same(const list_array<T, AnyAllocator>& val, size_t start, size_t end) & {
+        constexpr size_t remove_same(const list_array<T, AnyAllocator>& val, size_t start, size_t end) &
+            requires std::equality_comparable<T>
+        {
             return remove_same(val, 0, val.size(), start, end);
         }
 
@@ -3231,7 +3517,9 @@ namespace __new_list_array_impl {
          * @return The number of elements removed.
          */
         template <class AnyAllocator>
-        constexpr size_t remove_same(const list_array<T, AnyAllocator>& val, size_t val_start, size_t val_end, size_t start, size_t end) & {
+        constexpr size_t remove_same(const list_array<T, AnyAllocator>& val, size_t val_start, size_t val_end, size_t start, size_t end) &
+            requires std::equality_comparable<T>
+        {
             size_t old_size = _size();
             size_t pos = start;
             if (start < end)
@@ -3246,9 +3534,12 @@ namespace __new_list_array_impl {
             return old_size - _size();
         }
 
+/// @}
 #pragma endregion
 #pragma region find
 
+        /// @name find
+        /// @{
         /**
          * @brief Finds the index of the first occurrence of a specific value in the array.
          *
@@ -3256,7 +3547,6 @@ namespace __new_list_array_impl {
          *
          * @param it The value to search for.
          * @return The index of the first occurrence of the value, or `npos` if not found.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] size_t find(const T& it) const&
             requires std::equality_comparable<T>
@@ -3272,7 +3562,6 @@ namespace __new_list_array_impl {
          * @param begin The starting index for the search.
          * @param it The value to search for.
          * @return The index of the first occurrence of the value, or `npos` if not found.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] size_t find(size_t begin, const T& it) const&
             requires std::equality_comparable<T>
@@ -3289,7 +3578,6 @@ namespace __new_list_array_impl {
          * @param end The ending index of the range to search (exclusive).
          * @param it The value to search for.
          * @return The index of the first occurrence of the value, or `npos` if not found.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] size_t find(size_t begin, size_t end, const T& it) const&
             requires std::equality_comparable<T>
@@ -3309,7 +3597,6 @@ namespace __new_list_array_impl {
          * @param arr The C-style array to search for.
          * @param arr_end A pointer to the end of the C-style array `arr`.
          * @return The index of the first occurrence of the C-style array, or `npos` if not found.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] size_t find(const T* arr, const T* arr_end) const&
             requires std::equality_comparable<T>
@@ -3326,7 +3613,6 @@ namespace __new_list_array_impl {
          * @param arr The C-style array to search for.
          * @param arr_end A pointer to the end of the C-style array `arr`.
          * @return The index of the first occurrence of the C-style array, or `npos` if not found.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] size_t find(size_t begin, const T* arr, const T* arr_end) const&
             requires std::equality_comparable<T>
@@ -3344,7 +3630,6 @@ namespace __new_list_array_impl {
          * @param arr The C-style array to search for.
          * @param arr_end A pointer to the end of the C-style array `arr`.
          * @return The index of the first occurrence of the C-style array, or `npos` if not found.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] size_t find(size_t begin, size_t end, const T* arr, const T* arr_end) const&
             requires std::equality_comparable<T>
@@ -3372,7 +3657,6 @@ namespace __new_list_array_impl {
          * @tparam N The size of the C-style array `arr`.
          * @param arr The C-style array to search for.
          * @return The index of the first occurrence of the C-style array, or `npos` if not found.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <size_t N>
         constexpr [[nodiscard]] size_t find(const T (&arr)[N]) const&
@@ -3390,7 +3674,6 @@ namespace __new_list_array_impl {
          * @param begin The starting index for the search.
          * @param arr The C-style array to search for.
          * @return The index of the first occurrence of the C-style array, or `npos` if not found.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <size_t N>
         constexpr [[nodiscard]] size_t find(size_t begin, const T (&arr)[N]) const&
@@ -3409,7 +3692,6 @@ namespace __new_list_array_impl {
          * @param _end The ending index of the range to search (exclusive).
          * @param arr The C-style array to search for.
          * @return The index of the first occurrence of the C-style array, or `npos` if not found.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <size_t N>
         constexpr [[nodiscard]] size_t find(size_t begin, size_t _end, const T (&arr)[N]) const&
@@ -3426,7 +3708,6 @@ namespace __new_list_array_impl {
          * @param begin An iterator to the beginning of the range to search.
          * @param it The value to search for.
          * @return The index of the first occurrence of the value, or `npos` if not found.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <class any_iter>
         constexpr [[nodiscard]] size_t find(any_iter extern_begin, any_iter extern_end) const&
@@ -3495,7 +3776,6 @@ namespace __new_list_array_impl {
          * @tparam AnyAllocator The allocator type of the `list_array` `arr`.
          * @param arr The `list_array` to search for.
          * @return The index of the first occurrence of the `list_array`, or `npos` if not found.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <class AnyAllocator>
         constexpr [[nodiscard]] size_t find(const list_array<T, AnyAllocator>& arr) const&
@@ -3513,7 +3793,6 @@ namespace __new_list_array_impl {
          * @param begin The starting index for the search.
          * @param arr The `list_array` to search for.
          * @return The index of the first occurrence of the `list_array`, or `npos` if not found.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <class AnyAllocator>
         constexpr [[nodiscard]] size_t find(size_t begin, const list_array<T, AnyAllocator>& arr) const&
@@ -3532,7 +3811,6 @@ namespace __new_list_array_impl {
          * @param end The ending index of the range to search (exclusive).
          * @param arr The `list_array` to search for.
          * @return The index of the first occurrence of the `list_array`, or `npos` if not found.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <class AnyAllocator>
         constexpr [[nodiscard]] size_t find(size_t begin, size_t _end, const list_array<T, AnyAllocator>& arr) const&
@@ -3551,7 +3829,9 @@ namespace __new_list_array_impl {
          * @return The index of the first element that satisfies the predicate, or `npos` if not found.
          */
         template <class FN>
-        constexpr [[nodiscard]] size_t find_if(FN&& fn) const& {
+        constexpr [[nodiscard]] size_t find_if(FN&& fn) const&
+            requires std::is_invocable_r_v<bool, FN, size_t, T&> || std::is_invocable_r_v<bool, FN, T&>
+        {
             return find_if(0, size(), std::forward<FN>(fn));
         }
 
@@ -3566,7 +3846,9 @@ namespace __new_list_array_impl {
          * @return The index of the first element that satisfies the predicate, or `npos` if not found.
          */
         template <class FN>
-        constexpr [[nodiscard]] size_t find_if(size_t begin, FN&& fn) const& {
+        constexpr [[nodiscard]] size_t find_if(size_t begin, FN&& fn) const&
+            requires std::is_invocable_r_v<bool, FN, size_t, T&> || std::is_invocable_r_v<bool, FN, T&>
+        {
             return find_if(begin, size(), std::forward<FN>(fn));
         }
 
@@ -3582,9 +3864,11 @@ namespace __new_list_array_impl {
          * @return The index of the first element that satisfies the predicate, or `npos` if not found.
          */
         template <class FN>
-        constexpr [[nodiscard]] size_t find_if(size_t begin, size_t end, FN&& fn) const& {
+        constexpr [[nodiscard]] size_t find_if(size_t begin, size_t end, FN&& fn) const&
+            requires std::is_invocable_r_v<bool, FN, size_t, T&> || std::is_invocable_r_v<bool, FN, T&>
+        {
             auto _end = get_iterator(end);
-            if constexpr (std::is_invocable_v<FN, size_t, T>) {
+            if constexpr (std::is_invocable_r_v<bool, FN, size_t, T>) {
                 for (const_iterator it = get_iterator(begin); it != _end; ++it)
                     if (fn(it.absolute_index, *it))
                         return it.absolute_index;
@@ -3596,8 +3880,12 @@ namespace __new_list_array_impl {
             return npos;
         }
 
+/// @}
 #pragma endregion
 #pragma region split
+
+        /// @name split
+        /// @{
 
         /**
          * @brief Splits the array at the specified position.
@@ -3738,16 +4026,18 @@ namespace __new_list_array_impl {
          *
          * This function splits the array into multiple subarrays whenever the predicate `split_function` returns `true` for an element. The resulting subarrays are stored in a new `list_array` of `list_array` objects.
          *
-         * @tparam _Fn The type of the predicate function. It must be invocable with either `const T&` or `size_t, const T&` (index and element).
+         * @tparam FN The type of the predicate function. It must be invocable with either `const T&` or `size_t, const T&` (index and element).
          * @tparam InnerAllocator The allocator type for the inner `list_array` objects (defaults to `std::allocator<list_array<T, Allocator>>`).
          * @param split_function The predicate function to determine split points.
          * @return A new `list_array` containing the split subarrays.
          */
-        template <class _Fn, class InnerAllocator = std::allocator<list_array<T, Allocator>>>
-        constexpr [[nodiscard]] list_array<list_array<T, Allocator>, InnerAllocator> split_if(_Fn&& split_function) {
+        template <class FN, class InnerAllocator = std::allocator<list_array<T, Allocator>>>
+        constexpr [[nodiscard]] list_array<list_array<T, Allocator>, InnerAllocator> split_if(FN&& split_function)
+            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>
+        {
             list_array<list_array<T, Allocator>, InnerAllocator> res;
             for (size_t i = 0; i < _size(); i++) {
-                if constexpr (std::is_invocable_v<_Fn, size_t, T>) {
+                if constexpr (std::is_invocable_r_v<bool, FN, size_t, const T&>) {
                     if (split_function(i, operator[](i))) {
                         if (i != 0)
                             res.push_back(take(0, i));
@@ -3772,9 +4062,12 @@ namespace __new_list_array_impl {
             return res;
         }
 
+/// @}
 #pragma endregion
 #pragma region take
 
+        /// @name take
+        /// @{
         /**
          * @brief Takes ownership of the entire list_array.
          *
@@ -3854,13 +4147,15 @@ namespace __new_list_array_impl {
          *
          * This function is similar to the three-argument version of `take`, but it takes elements from the beginning to the end of the array.
          *
-         * @tparam _Fn The type of the predicate function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
+         * @tparam FN The type of the predicate function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
          * @param select_fn The predicate function to apply to each element.
          * @return A new list_array object containing the taken elements.
          */
-        template <class _Fn, std::enable_if<std::is_function<_Fn>::value>>
-        constexpr [[nodiscard]] list_array<T, Allocator> take(_Fn&& select_fn) {
-            return take(select_fn, 0, _size());
+        template <class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> take(FN&& select_fn)
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            return take(std::forward<FN>(select_fn), 0, _size());
         }
 
         /**
@@ -3868,14 +4163,16 @@ namespace __new_list_array_impl {
          *
          * This function is similar to the three-argument version of `take`, but it takes elements from `start_pos` to the end of the array.
          *
-         * @tparam _Fn The type of the predicate function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
+         * @tparam FN The type of the predicate function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param select_fn The predicate function to apply to each element.
          * @return A new list_array object containing the taken elements.
          */
-        template <class _Fn, std::enable_if<std::is_function<_Fn>::value>>
-        constexpr [[nodiscard]] list_array<T, Allocator> take(size_t start_pos, _Fn&& select_fn) {
-            return take(select_fn, start_pos, _size());
+        template <class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> take(size_t start_pos, FN&& select_fn)
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            return take(std::forward<FN>(select_fn), start_pos, _size());
         }
 
         /**
@@ -3883,7 +4180,7 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the specified range (`start_pos` to `end_pos`) and applies the given predicate `select_fn` to each element. The elements for which the predicate returns true are moved into a new list_array object, and then removed from the original list_array.
          *
-         * @tparam _Fn The type of the predicate function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
+         * @tparam FN The type of the predicate function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param end_pos The ending index of the range to consider (exclusive).
          * @param select_fn The predicate function to apply to each element.
@@ -3891,8 +4188,10 @@ namespace __new_list_array_impl {
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
-        template <class _Fn, std::enable_if<std::is_function<_Fn>::value>>
-        constexpr [[nodiscard]] list_array<T, Allocator> take(size_t start_pos, size_t end_pos, _Fn&& select_fn) {
+        template <class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> take(size_t start_pos, size_t end_pos, FN&& select_fn)
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
             if (_size() < end_pos)
@@ -3904,7 +4203,7 @@ namespace __new_list_array_impl {
             size_t last_selection = 0;
             bool first = true;
             for (auto& it : range(start_pos, end_pos)) {
-                if constexpr (std::is_invocable_v<_Fn, size_t, T>) {
+                if constexpr (std::is_invocable_r_v<bool, FN, size_t, T>) {
                     if (select_fn(i, it)) {
                         if (first)
                             first_selection = i;
@@ -3936,9 +4235,12 @@ namespace __new_list_array_impl {
             return res;
         }
 
+/// @}
 #pragma endregion
 #pragma region copy/swap
 
+        /// @name copy/swap
+        /// @{
         /**
          * @brief Creates a copy of a subrange of the `list_array`.
          *
@@ -3993,7 +4295,7 @@ namespace __new_list_array_impl {
          * @param to_swap The `list_array` to swap contents with.
          * @return list_array<T, Allocator>& A reference to this `list_array` after the swap.
          */
-        constexpr [[nodiscard]] list_array<T, Allocator>& swap(list_array<T, Allocator>& to_swap) noexcept {
+        constexpr list_array<T, Allocator>& swap(list_array<T, Allocator>& to_swap) noexcept {
             if (first_block != first_block) {
                 arr_block<T>* fb = first_block;
                 arr_block<T>* lb = last_block;
@@ -4016,16 +4318,18 @@ namespace __new_list_array_impl {
             return *this;
         }
 
+/// @}
 #pragma endregion
 #pragma region remove duplicates
 
+        /// @name remove duplicates
+        /// @{
         /**
          * @brief Removes consecutive duplicate elements from the array.
          *
          * This function modifies the array in-place, removing consecutive duplicate elements within the entire array. It uses the default equality comparison operator (`==`) to determine duplicates.
          *
          * @return The number of elements removed.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr size_t unique() &
             requires std::equality_comparable<T>
@@ -4040,7 +4344,6 @@ namespace __new_list_array_impl {
          *
          * @param start_pos The starting index from which to remove duplicates.
          * @return The number of elements removed.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr size_t unique(size_t start_pos) &
             requires std::equality_comparable<T>
@@ -4056,7 +4359,6 @@ namespace __new_list_array_impl {
          * @param start_pos The starting index from which to remove duplicates.
          * @param end_pos The ending index of the range to consider (exclusive).
          * @return The number of elements removed.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr size_t unique(size_t start_pos, size_t end_pos) &
             requires std::equality_comparable<T>
@@ -4087,13 +4389,15 @@ namespace __new_list_array_impl {
          *
          * This function modifies the array in-place, removing consecutive duplicate elements within the entire array. It allows you to provide a custom comparison function (`compare_func`) to determine duplicates.
          *
-         * @tparam _Fn The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
          * @param compare_func The custom comparison function to use.
          * @return The number of elements removed.
          */
-        template <class _Fn>
-        constexpr size_t unique(_Fn&& compare_func) & {
-            return unique(0, _size(), std::forward<_Fn>(compare_func));
+        template <class FN>
+        constexpr size_t unique(FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            return unique(0, _size(), std::forward<FN>(compare_func));
         }
 
         /**
@@ -4101,14 +4405,16 @@ namespace __new_list_array_impl {
          *
          * This function modifies the array in-place, removing consecutive duplicate elements starting from the specified `start_pos`. It uses the provided `compare_func` to determine duplicates.
          *
-         * @tparam _Fn The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
          * @param start_pos The starting index from which to remove duplicates.
          * @param compare_func The custom comparison function to use.
          * @return The number of elements removed.
          */
-        template <class _Fn>
-        constexpr size_t unique(size_t start_pos, _Fn&& compare_func) & {
-            return unique(start_pos, _size(), std::forward<_Fn>(compare_func));
+        template <class FN>
+        constexpr size_t unique(size_t start_pos, FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            return unique(start_pos, _size(), std::forward<FN>(compare_func));
         }
 
         /**
@@ -4116,15 +4422,17 @@ namespace __new_list_array_impl {
          *
          * This function is similar to `unique(size_t, size_t)`, but it allows you to provide a custom comparison function (`compare_func`) to determine duplicates.
          *
-         * @tparam _Fn The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param end_pos The ending index of the range to consider (exclusive).
          * @param compare_func The custom comparison function to use.
          * @return The number of elements removed.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
-        template <class _Fn>
-        constexpr size_t unique(size_t start_pos, size_t end_pos, _Fn&& compare_func) & {
+        template <class FN>
+        constexpr size_t unique(size_t start_pos, size_t end_pos, FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
             if (start_pos > end_pos)
                 std::swap(start_pos, end_pos);
             if (start_pos + 1 >= end_pos)
@@ -4150,7 +4458,6 @@ namespace __new_list_array_impl {
          * This function modifies the array in-place, removing duplicate elements within the entire array. It uses the default equality comparison operator (`==`) to determine duplicates. The order of the remaining unique elements is not guaranteed to be preserved.
          *
          * @return The number of elements removed.
-         * @tparam Requires the element type (`T`) to be equality comparable and copy constructible.
          */
         constexpr size_t unify() &
             requires std::equality_comparable<T> && std::copy_constructible<T>
@@ -4165,8 +4472,7 @@ namespace __new_list_array_impl {
              *
              * @param start_pos The starting index from which to remove duplicates.
              * @return The number of elements removed.
-             * @tparam Requires the element type (`T`) to be equality comparable and copy constructible.
-             */
+                 */
         constexpr size_t unify(size_t start_pos) &
             requires std::equality_comparable<T> && std::copy_constructible<T>
         {
@@ -4182,8 +4488,7 @@ namespace __new_list_array_impl {
              * @param end_pos The ending index of the range to consider (exclusive).
              * @return The number of elements removed.
              * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-             * @tparam Requires the element type (`T`) to be equality comparable and copy constructible.
-             */
+                 */
         constexpr size_t unify(size_t start_pos, size_t end_pos) &
             requires std::equality_comparable<T> && std::copy_constructible<T>
         {
@@ -4203,8 +4508,7 @@ namespace __new_list_array_impl {
              * This function iterates over the elements within the entire array and counts the number of elements that have unique values (i.e., they appear only once in the array).
              *
              * @return The number of elements with unique values within the entire array.
-             * @tparam Requires the element type (`T`) to be equality comparable.
-             */
+                 */
         constexpr size_t alone() &
             requires std::equality_comparable<T>
         {
@@ -4218,7 +4522,6 @@ namespace __new_list_array_impl {
          *
          * @param start_pos The starting index from which to consider unique values.
          * @return The number of elements with unique values within the array, starting from `start_pos`.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr size_t alone(size_t start_pos) &
             requires std::equality_comparable<T>
@@ -4235,7 +4538,6 @@ namespace __new_list_array_impl {
          * @param end_pos The ending index of the range to consider (exclusive).
          * @return The number of elements with unique values within the specified range.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr size_t alone(size_t start_pos, size_t end_pos) &
             requires std::equality_comparable<T>
@@ -4289,7 +4591,6 @@ namespace __new_list_array_impl {
          *
          * @param val The value to remove.
          * @return A new `list_array` object with all occurrences of `val` removed.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] list_array<T, Allocator> unique() &&
             requires std::equality_comparable<T>
@@ -4305,7 +4606,6 @@ namespace __new_list_array_impl {
          *
          * @param start_pos The starting index from which to remove duplicates.
          * @return A new `list_array` object with all occurrences of `val` removed, starting from `start_pos`.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] list_array<T, Allocator> unique(size_t start_pos) &&
             requires std::equality_comparable<T>
@@ -4321,7 +4621,6 @@ namespace __new_list_array_impl {
          *
          * @param start_pos The starting index from which to remove duplicates.
          * @return A new `list_array` object with all occurrences of `val` removed, starting from `start_pos`.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] list_array<T, Allocator> unique(size_t start_pos, size_t end_pos) &&
             requires std::equality_comparable<T>
@@ -4333,48 +4632,54 @@ namespace __new_list_array_impl {
         /**
          * @brief Removes consecutive duplicate elements from the array (move version) using a custom comparison function.
          *
-         * This function is similar to the lvalue reference version of `unique(size_t, size_t, _Fn&&)`, but it operates on an rvalue reference (temporary) of the `list_array`. It removes consecutive duplicate elements within the specified range (`start_pos` to `end_pos`) using the provided comparison function and then returns the modified array by value.
+         * This function is similar to the lvalue reference version of `unique(size_t, size_t, FN&&)`, but it operates on an rvalue reference (temporary) of the `list_array`. It removes consecutive duplicate elements within the specified range (`start_pos` to `end_pos`) using the provided comparison function and then returns the modified array by value.
          *
-         * @tparam _Fn The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param end_pos The ending index of the range to consider (exclusive).
          * @param compare_func The custom comparison function to use.
          * @return A new `list_array` object with consecutive duplicate elements removed within the specified range.
          */
-        template <class _Fn>
-        constexpr [[nodiscard]] list_array<T, Allocator> unique(_Fn&& compare_func) && {
-            unique(0, _size(), std::forward<_Fn>(compare_func));
+        template <class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> unique(FN&& compare_func) &&
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            unique(0, _size(), std::forward<FN>(compare_func));
             return std::move(*this);
         }
 
         /**
          * @brief Removes consecutive duplicate elements from the array (move version) using a custom comparison function.
          *
-         * This function is similar to the lvalue reference version of `unique(size_t, size_t, _Fn&&)`, but it operates on an rvalue reference (temporary) of the `list_array`. It removes consecutive duplicate elements within the specified range (`start_pos` to `end_pos`) using the provided comparison function and then returns the modified array by value.
+         * This function is similar to the lvalue reference version of `unique(size_t, size_t, FN&&)`, but it operates on an rvalue reference (temporary) of the `list_array`. It removes consecutive duplicate elements within the specified range (`start_pos` to `end_pos`) using the provided comparison function and then returns the modified array by value.
          *
-         * @tparam _Fn The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param compare_func The custom comparison function to use.
          * @return A new `list_array` object with consecutive duplicate elements removed within the specified range.
          */
-        template <class _Fn>
-        constexpr [[nodiscard]] list_array<T, Allocator> unique(size_t start_pos, _Fn&& compare_func) && {
-            unique(start_pos, _size(), std::forward<_Fn>(compare_func));
+        template <class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> unique(size_t start_pos, FN&& compare_func) &&
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            unique(start_pos, _size(), std::forward<FN>(compare_func));
             return std::move(*this);
         }
 
         /**
          * @brief  Removes duplicate elements from a specified range within the list_array, based on a comparison function (move version).
          *
-         * @tparam _Fn The type of the comparison function. It should take two const references to `T` and return `true` if the elements are considered equal, and `false` otherwise.
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if the elements are considered equal, and `false` otherwise.
          * @param start_pos The starting index of the range to process (inclusive).
          * @param end_pos The ending index of the range to process (exclusive).
          * @param compare_func The comparison function to determine element equality.
          * @return A new list_array object with duplicates removed.
          */
-        template <class _Fn>
-        constexpr [[nodiscard]] list_array<T, Allocator> unique(size_t start_pos, size_t end_pos, _Fn&& compare_func) && {
-            unique(end_pos, _size(), std::forward<_Fn>(compare_func));
+        template <class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> unique(size_t start_pos, size_t end_pos, FN&& compare_func) &&
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            unique(end_pos, _size(), std::forward<FN>(compare_func));
             return std::move(*this);
         }
 
@@ -4384,7 +4689,6 @@ namespace __new_list_array_impl {
          * This function is similar to the lvalue reference version of `unify`, but it operates on an rvalue reference (temporary) of the `list_array`. It removes duplicate elements within the entire array and then returns the modified array by value. The order of the remaining unique elements is not guaranteed to be preserved.
          *
          * @return A new `list_array` object with all duplicate elements removed.
-         * @tparam Requires the element type (`T`) to be equality comparable and copy constructible.
          */
         constexpr [[nodiscard]] list_array<T, Allocator> unify() &&
             requires std::equality_comparable<T> && std::copy_constructible<T>
@@ -4400,8 +4704,7 @@ namespace __new_list_array_impl {
              *
              * @param start_pos The starting index from which to remove duplicates.
              * @return A new `list_array` object with all duplicate elements removed, starting from `start_pos`.
-             * @tparam Requires the element type (`T`) to be equality comparable and copy constructible.
-             */
+                 */
         constexpr [[nodiscard]] list_array<T, Allocator> unify(size_t start_pos) &&
             requires std::equality_comparable<T> && std::copy_constructible<T>
         {
@@ -4417,8 +4720,7 @@ namespace __new_list_array_impl {
              * @param start_pos The starting index of the range to consider (inclusive).
              * @param end_pos The ending index of the range to consider (exclusive).
              * @return A new `list_array` object with all duplicate elements removed within the specified range.
-             * @tparam Requires the element type (`T`) to be equality comparable and copy constructible.
-             */
+                 */
         constexpr [[nodiscard]] list_array<T, Allocator> unify(size_t start_pos, size_t end_pos) &&
             requires std::equality_comparable<T> && std::copy_constructible<T>
         {
@@ -4432,8 +4734,7 @@ namespace __new_list_array_impl {
              * This function is similar to the lvalue reference version of `alone`, but it operates on an rvalue reference (temporary) of the `list_array`. It removes elements with unique values within the entire array and then returns the modified array by value.
              *
              * @return A new `list_array` object with all elements with unique values removed.
-             * @tparam Requires the element type (`T`) to be equality comparable.
-             */
+                 */
         constexpr [[nodiscard]] list_array<T, Allocator> alone() &&
             requires std::equality_comparable<T>
         {
@@ -4448,7 +4749,6 @@ namespace __new_list_array_impl {
          *
          * @param start_pos The starting index from which to consider unique values.
          * @return A new `list_array` object with all elements with unique values removed, starting from `start_pos`.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] list_array<T, Allocator> alone(size_t start_pos) &&
             requires std::equality_comparable<T>
@@ -4465,7 +4765,6 @@ namespace __new_list_array_impl {
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param end_pos The ending index of the range to consider (exclusive).
          * @return A new `list_array` object with all elements with unique values removed within the specified range.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] list_array<T, Allocator> alone(size_t start_pos, size_t end_pos) &&
             requires std::equality_comparable<T>
@@ -4474,27 +4773,30 @@ namespace __new_list_array_impl {
             return std::move(*this);
         }
 
+/// @}
 #pragma endregion
 #pragma region join
+
+        /// @name join
+        /// @{
 
         /**
          * @brief Joins elements of the array with an item or other array, based on a condition.
          *
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the `insert_item` after the element. The modified elements, along with the inserted items, are stored in this `list_array` object.
          *
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_item The item to insert after elements where the predicate is true.
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param end_pos The ending index of the range to consider (exclusive).
          * @param where_join The predicate function to determine where to insert the `insert_item`.
          * @return A reference to this `list_array` after the join operation.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class _FN = bool (*)(const T&)>
-        constexpr list_array<T, Allocator>& join(const T& insert_item, _FN&& where_join) &
-            requires std::copy_constructible<T>
+        template <class FN>
+        constexpr list_array<T, Allocator>& join(const T& insert_item, FN&& where_join) &
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return *this = std::move(*this).join(insert_item, 0, _size(), std::forward<_FN>(where_join));
+            return *this = std::move(*this).join(insert_item, 0, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -4502,20 +4804,19 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array, starting from the specified `start_pos`. For each element where the `where_join` predicate returns true, it inserts the `insert_item` after the element. The modified elements, along with the inserted items, are stored in this `list_array` object.
          *
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_item The item to insert after elements where the predicate is true.
          * @param start_pos The starting index from which to insert the `insert_item`.
          * @param where_join The predicate function to determine where to insert the `insert_item`.
          * @return A reference to this `list_array` after the join operation.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class _FN = bool (*)(const T&)>
-        constexpr list_array<T, Allocator>& join(const T& insert_item, size_t start_pos, _FN&& where_join) &
-            requires std::copy_constructible<T>
+        template <class FN = bool (*)(const T&)>
+        constexpr list_array<T, Allocator>& join(const T& insert_item, size_t start_pos, FN&& where_join) &
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return *this = std::move(*this).join(insert_item, start_pos, _size(), std::forward<_FN>(where_join));
+            return *this = std::move(*this).join(insert_item, start_pos, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -4523,7 +4824,7 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the `insert_item` after the element. The modified elements, along with the inserted items, are stored in this `list_array` object.
          *
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_item The item to insert after elements where the predicate is true.
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param end_pos The ending index of the range to consider (exclusive).
@@ -4531,13 +4832,12 @@ namespace __new_list_array_impl {
          * @return A reference to this `list_array` after the join operation.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class _FN = bool (*)(const T&)>
-        constexpr list_array<T, Allocator>& join(const T& insert_item, size_t start_pos, size_t end_pos, _FN&& where_join) &
-            requires std::copy_constructible<T>
+        template <class FN>
+        constexpr list_array<T, Allocator>& join(const T& insert_item, size_t start_pos, size_t end_pos, FN&& where_join) &
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return *this = std::move(*this).join(insert_item, start_pos, end_pos, std::forward<_FN>(where_join));
+            return *this = std::move(*this).join(insert_item, start_pos, end_pos, std::forward<FN>(where_join));
         }
 
         /**
@@ -4546,17 +4846,16 @@ namespace __new_list_array_impl {
          * This function iterates over all elements in the array. For each element where the `where_join` predicate returns true, it inserts the elements from `insert_items` after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
          * @tparam AnyAllocator The allocator type of the `list_array` `insert_items`.
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items The `list_array` containing the items to insert after elements where the predicate is true.
          * @param where_join The predicate function to determine where to insert the items from `insert_items`.
          * @return A new `list_array` object containing the joined elements.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class AnyAllocator, class _FN = bool (*)(const T&)>
-        constexpr list_array<T, Allocator>& join(const list_array<T, AnyAllocator>& insert_items, _FN&& where_join) &
-            requires std::copy_constructible<T>
+        template <class AnyAllocator, class FN>
+        constexpr list_array<T, Allocator>& join(const list_array<T, AnyAllocator>& insert_items, FN&& where_join) &
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return *this = std::move(*this).join(insert_items, 0, _size(), std::forward<_FN>(where_join));
+            return *this = std::move(*this).join(insert_items, 0, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -4565,19 +4864,18 @@ namespace __new_list_array_impl {
          * This function iterates over the elements in the array, starting from the specified `start_pos`. For each element where the `where_join` predicate returns true, it inserts the elements from `insert_items` after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
          * @tparam AnyAllocator The allocator type of the `list_array` `insert_items`.
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items The `list_array` containing the items to insert after elements where the predicate is true.
          * @param start_pos The starting index from which to insert the items from `insert_items`.
          * @param where_join The predicate function to determine where to insert the items from `insert_items`.
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class AnyAllocator, class _FN = bool (*)(const T&)>
-        constexpr list_array<T, Allocator>& join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, _FN&& where_join) &
-            requires std::copy_constructible<T>
+        template <class AnyAllocator, class FN>
+        constexpr list_array<T, Allocator>& join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, FN&& where_join) &
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return *this = std::move(*this).join(insert_items, start_pos, _size(), std::forward<_FN>(where_join));
+            return *this = std::move(*this).join(insert_items, start_pos, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -4586,7 +4884,7 @@ namespace __new_list_array_impl {
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the elements from `insert_items` after the element. The modified elements, along with the inserted items, are stored in this `list_array` object.
          *
          * @tparam AnyAllocator The allocator type of the `list_array` `insert_items`.
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items The `list_array` containing the items to insert after elements where the predicate is true.
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param end_pos The ending index of the range to consider (exclusive).
@@ -4594,13 +4892,12 @@ namespace __new_list_array_impl {
          * @return A reference to this `list_array` after the join operation.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class AnyAllocator, class _FN = bool (*)(const T&)>
-        constexpr list_array<T, Allocator>& join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, size_t end_pos, _FN&& where_join) &
-            requires std::copy_constructible<T>
+        template <class AnyAllocator, class FN>
+        constexpr list_array<T, Allocator>& join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, size_t end_pos, FN&& where_join) &
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return *this = std::move(*this).join(insert_items, start_pos, end_pos, std::forward<_FN>(where_join));
+            return *this = std::move(*this).join(insert_items, start_pos, end_pos, std::forward<FN>(where_join));
         }
 
         /**
@@ -4609,17 +4906,16 @@ namespace __new_list_array_impl {
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the elements from the C-style array `insert_items` (with size `arr_size`) after the element. The modified elements, along with the inserted items, are stored in this `list_array` object.
          *
          * @tparam arr_size The size of the C-style array `insert_items`.
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items The C-style array containing the items to insert after elements where the predicate is true.
          * @param where_join The predicate function to determine where to insert the items from `insert_items`.
          * @return A reference to this `list_array` after the join operation.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <size_t arr_size, class _FN>
-        constexpr list_array<T, Allocator>& join(const T (&insert_items)[arr_size], _FN&& where_join) &
-            requires std::copy_constructible<T>
+        template <size_t arr_size, class FN>
+        constexpr list_array<T, Allocator>& join(const T (&insert_items)[arr_size], FN&& where_join) &
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return *this = std::move(*this).join(insert_items, arr_size, 0, _size(), std::forward<_FN>(where_join));
+            return *this = std::move(*this).join(insert_items, arr_size, 0, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -4628,19 +4924,18 @@ namespace __new_list_array_impl {
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the elements from the C-style array `insert_items` (with size `arr_size`) after the element. The modified elements, along with the inserted items, are stored in this `list_array` object.
          *
          * @tparam arr_size The size of the C-style array `insert_items`.
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items The C-style array containing the items to insert after elements where the predicate is true.
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param where_join The predicate function to determine where to insert the items from `insert_items`.
          * @return A reference to this `list_array` after the join operation.
          * @throws std::invalid_argument If `start_pos` is greater than  size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <size_t arr_size, class _FN>
-        constexpr list_array<T, Allocator>& join(const T (&insert_items)[arr_size], size_t start_pos, _FN&& where_join) &
-            requires std::copy_constructible<T>
+        template <size_t arr_size, class FN>
+        constexpr list_array<T, Allocator>& join(const T (&insert_items)[arr_size], size_t start_pos, FN&& where_join) &
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return *this = std::move(*this).join(insert_items, arr_size, start_pos, _size(), std::forward<_FN>(where_join));
+            return *this = std::move(*this).join(insert_items, arr_size, start_pos, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -4649,7 +4944,7 @@ namespace __new_list_array_impl {
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the elements from the C-style array `insert_items` (with size `arr_size`) after the element. The modified elements, along with the inserted items, are stored in this `list_array` object.
          *
          * @tparam arr_size The size of the C-style array `insert_items`.
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items The C-style array containing the items to insert after elements where the predicate is true.
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param end_pos The ending index of the range to consider (exclusive).
@@ -4657,13 +4952,12 @@ namespace __new_list_array_impl {
          * @return A reference to this `list_array` after the join operation.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <size_t arr_size, class _FN>
-        constexpr list_array<T, Allocator>& join(const T (&insert_items)[arr_size], size_t start_pos, size_t end_pos, _FN&& where_join) &
+        template <size_t arr_size, class FN>
+        constexpr list_array<T, Allocator>& join(const T (&insert_items)[arr_size], size_t start_pos, size_t end_pos, FN&& where_join) &
             requires std::copy_constructible<T>
         {
-            return *this = std::move(*this).join(insert_items, arr_size, start_pos, end_pos, std::forward<_FN>(where_join));
+            return *this = std::move(*this).join(insert_items, arr_size, start_pos, end_pos, std::forward<FN>(where_join));
         }
 
         /**
@@ -4671,17 +4965,17 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array. For each element where the `where_join` predicate returns true, it inserts the elements from the raw array `insert_items` (with `items_count` elements) after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items A pointer to the beginning of the raw array containing the items to insert.
          * @param items_count The number of items in the raw array `insert_items`.
          * @param where_join The predicate function to determine where to insert the items from `insert_items`.
          * @return A new `list_array` object containing the joined elements.
          */
-        template <class _FN>
-        constexpr list_array<T, Allocator>& join(const T* insert_items, size_t items_count, _FN&& where_join) &
-            requires std::copy_constructible<T>
+        template <class FN>
+        constexpr list_array<T, Allocator>& join(const T* insert_items, size_t items_count, FN&& where_join) &
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return *this = std::move(*this).join(insert_items, items_count, 0, _size(), std::forward<_FN>(where_join));
+            return *this = std::move(*this).join(insert_items, items_count, 0, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -4689,19 +4983,18 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array, starting from the specified `start_pos`. For each element where the `where_join` predicate returns true, it inserts the elements from the raw array `insert_items` (with `items_count` elements) after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items A pointer to the beginning of the raw array containing the items to insert.
          * @param items_count The number of items in the raw array `insert_items`.
          * @param start_pos The index where the insertion starts (inclusive).
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class _FN>
-        constexpr list_array<T, Allocator>& join(const T* insert_items, size_t items_count, size_t start_pos, _FN&& where_join) &
-            requires std::copy_constructible<T>
+        template <class FN>
+        constexpr list_array<T, Allocator>& join(const T* insert_items, size_t items_count, size_t start_pos, FN&& where_join) &
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return *this = std::move(*this).join(insert_items, items_count, start_pos, _size(), std::forward<_FN>(where_join));
+            return *this = std::move(*this).join(insert_items, items_count, start_pos, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -4709,7 +5002,7 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the elements from the raw array `insert_items` (with `items_count` elements) after the element. The modified elements, along with the inserted items, are stored in this `list_array` object.
          *
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items A pointer to the beginning of the raw array containing the items to insert.
          * @param items_count The number of items in the raw array `insert_items`.
          * @param start_pos The starting index of the range to consider (inclusive).
@@ -4718,13 +5011,12 @@ namespace __new_list_array_impl {
          * @return A reference to this `list_array` after the join operation.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class _FN>
-        constexpr list_array<T, Allocator>& join(const T* insert_items, size_t items_count, size_t start_pos, size_t end_pos, _FN&& where_join) &
-            requires std::copy_constructible<T>
+        template <class FN>
+        constexpr list_array<T, Allocator>& join(const T* insert_items, size_t items_count, size_t start_pos, size_t end_pos, FN&& where_join) &
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return *this = std::move(*this).join(insert_items, start_pos, end_pos, std::forward<_FN>(where_join));
+            return *this = std::move(*this).join(insert_items, start_pos, end_pos, std::forward<FN>(where_join));
         }
 
         /**
@@ -4734,7 +5026,6 @@ namespace __new_list_array_impl {
          *
          * @param insert_item The item to insert after each element.
          * @return A reference to this `list_array` after the join operation.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         constexpr list_array<T, Allocator>& join(const T& insert_item) &
             requires std::copy_constructible<T>
@@ -4751,7 +5042,6 @@ namespace __new_list_array_impl {
          * @param start_pos The starting index from which to insert the `insert_item`.
          * @return A reference to this `list_array` after the join operation.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         constexpr list_array<T, Allocator>& join(const T& insert_item, size_t start_pos) &
             requires std::copy_constructible<T>
@@ -4770,7 +5060,6 @@ namespace __new_list_array_impl {
          * @return A reference to this `list_array` after the join operation.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         constexpr list_array<T, Allocator>& join(const T& insert_item, size_t start_pos, size_t end_pos) &
             requires std::copy_constructible<T>
@@ -4786,7 +5075,6 @@ namespace __new_list_array_impl {
          * @tparam AnyAllocator The allocator type of the `list_array` `insert_items`.
          * @param insert_items The `list_array` containing the items to insert after elements.
          * @return A new `list_array` object containing the joined elements.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         template <class AnyAllocator>
         constexpr list_array<T, Allocator>& join(const list_array<T, AnyAllocator>& insert_items) &
@@ -4805,7 +5093,6 @@ namespace __new_list_array_impl {
          * @param start_pos The starting index from which to insert the items from `insert_items`.
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         template <class AnyAllocator>
         constexpr list_array<T, Allocator>& join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos) &
@@ -4826,7 +5113,6 @@ namespace __new_list_array_impl {
          * @return A reference to this `list_array` after the join operation.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         template <class AnyAllocator>
         constexpr list_array<T, AnyAllocator>& join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, size_t end_pos) &
@@ -4843,7 +5129,6 @@ namespace __new_list_array_impl {
          * @param insert_items A pointer to the beginning of the raw array containing the items to insert.
          * @param items_count The number of items in the raw array `insert_items`.
          * @return A new `list_array` object containing the joined elements.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         constexpr list_array<T, Allocator>& join(const T* insert_items, size_t items_count) &
             requires std::copy_constructible<T>
@@ -4861,7 +5146,6 @@ namespace __new_list_array_impl {
          * @param start_pos The index where the insertion starts (inclusive).
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         constexpr list_array<T, Allocator>& join(const T* insert_items, size_t items_count, size_t start_pos) &
             requires std::copy_constructible<T>
@@ -4881,7 +5165,6 @@ namespace __new_list_array_impl {
          * @return A reference to this `list_array` after the join operation.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         constexpr list_array<T, Allocator>& join(const T* insert_items, size_t items_count, size_t start_pos, size_t end_pos) &
             requires std::copy_constructible<T>
@@ -4897,7 +5180,6 @@ namespace __new_list_array_impl {
          * @tparam arr_size The size of the C-style array `insert_items`.
          * @param insert_items The C-style array containing the items to insert after each element.
          * @return A reference to this `list_array` after the join operation.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         template <size_t arr_size>
         constexpr list_array<T, Allocator>& join(const T (&insert_items)[arr_size]) &
@@ -4912,13 +5194,10 @@ namespace __new_list_array_impl {
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the elements from the C-style array `insert_items` (with size `arr_size`) after the element. The modified elements, along with the inserted items, are stored in this `list_array` object.
          *
          * @tparam arr_size The size of the C-style array `insert_items`.
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
          * @param insert_items The C-style array containing the items to insert after elements where the predicate is true.
          * @param start_pos The starting index of the range to consider (inclusive).
-         * @param where_join The predicate function to determine where to insert the items from `insert_items`.
          * @return A reference to this `list_array` after the join operation.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         template <size_t arr_size>
         constexpr list_array<T, Allocator>& join(const T (&insert_items)[arr_size], size_t start_pos) &
@@ -4933,15 +5212,12 @@ namespace __new_list_array_impl {
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the elements from the C-style array `insert_items` (with size `arr_size`) after the element. The modified elements, along with the inserted items, are stored in this `list_array` object.
          *
          * @tparam arr_size The size of the C-style array `insert_items`.
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
          * @param insert_items The C-style array containing the items to insert after elements where the predicate is true.
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param end_pos The ending index of the range to consider (exclusive).
-         * @param where_join The predicate function to determine where to insert the items from `insert_items`.
          * @return A reference to this `list_array` after the join operation.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         template <size_t arr_size>
         constexpr list_array<T, Allocator>& join(const T (&insert_items)[arr_size], size_t start_pos, size_t end_pos) &
@@ -4955,17 +5231,16 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the `insert_item` after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_item The item to insert after elements where the predicate is true.
          * @param where_join The predicate function to determine where to insert the `insert_item`.
          * @return A new `list_array` object containing the joined elements.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class _FN = bool (*)(const T&)>
-        constexpr list_array<T, Allocator> join(const T& insert_item, _FN&& where_join) &&
-            requires std::copy_constructible<T>
+        template <class FN = bool (*)(const T&)>
+        constexpr list_array<T, Allocator> join(const T& insert_item, FN&& where_join) &&
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return std::move(*this).join(insert_item, 0, _size(), std::forward<_FN>(where_join));
+            return std::move(*this).join(insert_item, 0, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -4973,19 +5248,18 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array, starting from the specified `start_pos`. For each element where the `where_join` predicate returns true, it inserts the `insert_item` after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_item The item to insert after elements where the predicate is true.
          * @param start_pos The starting index from which to insert the `insert_item`.
          * @param where_join The predicate function to determine where to insert the `insert_item`.
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class _FN = bool (*)(const T&)>
-        constexpr list_array<T, Allocator> join(const T& insert_item, size_t start_pos, _FN&& where_join) &&
-            requires std::copy_constructible<T>
+        template <class FN>
+        constexpr list_array<T, Allocator> join(const T& insert_item, size_t start_pos, FN&& where_join) &&
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return std::move(*this).join(insert_item, start_pos, _size(), std::forward<_FN>(where_join));
+            return std::move(*this).join(insert_item, start_pos, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -4993,7 +5267,7 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the `insert_item` after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_item The item to insert after elements where the predicate is true.
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param end_pos The ending index of the range to consider (exclusive).
@@ -5001,11 +5275,10 @@ namespace __new_list_array_impl {
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class _FN = bool (*)(const T&)>
-        constexpr list_array<T, Allocator> join(const T& insert_item, size_t start_pos, size_t end_pos, _FN&& where_join) &&
-            requires std::copy_constructible<T>
+        template <class FN>
+        constexpr list_array<T, Allocator> join(const T& insert_item, size_t start_pos, size_t end_pos, FN&& where_join) &&
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
@@ -5013,10 +5286,22 @@ namespace __new_list_array_impl {
                 throw std::out_of_range("end_pos out of size limit");
             list_array<T, Allocator> res;
             res.reserve(_size() * 2);
-            for (auto& i : range(start_pos, end_pos)) {
-                res.push_back(std::move(i));
-                if (where_join(i))
-                    res.push_back(insert_item);
+
+            if constexpr (std::is_invocable_r_v<bool, FN, const T&>) {
+                for (auto& i : range(start_pos, end_pos)) {
+                    bool make_join = where_join(i);
+                    res.push_back(std::move(i));
+                    if (make_join)
+                        res.push_back(insert_item);
+                }
+            } else {
+                auto end = get_iterator(end_pos);
+                for (const_iterator begin = get_iterator(start_pos); begin != end; ++begin) {
+                    bool make_join = where_join(begin.absolute_index, *begin);
+                    res.push_back(std::move(*begin));
+                    if (make_join)
+                        res.push_back(insert_item);
+                }
             }
 
             return res;
@@ -5028,17 +5313,16 @@ namespace __new_list_array_impl {
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the elements from `insert_items` after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
          * @tparam AnyAllocator The allocator type of the `list_array` `insert_items`.
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items The `list_array` containing the items to insert after elements where the predicate is true.
          * @param where_join The predicate function to determine where to insert the items from `insert_items`.
          * @return A new `list_array` object containing the joined elements.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class AnyAllocator, class _FN = bool (*)(const T&)>
-        constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items, _FN&& where_join) &&
-            requires std::copy_constructible<T>
+        template <class AnyAllocator, class FN = bool (*)(const T&)>
+        constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items, FN&& where_join) &&
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return std::move(*this).join(insert_items, 0, _size(), std::forward<_FN>(where_join));
+            return std::move(*this).join(insert_items, 0, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -5047,20 +5331,19 @@ namespace __new_list_array_impl {
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the elements from `insert_items` after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
          * @tparam AnyAllocator The allocator type of the `list_array` `insert_items`.
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items The `list_array` containing the items to insert after elements where the predicate is true.
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param end_pos The ending index of the range to consider (exclusive).
          * @param where_join The predicate function to determine where to insert the items from `insert_items`.
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class AnyAllocator, class _FN = bool (*)(const T&)>
-        constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, _FN&& where_join) &&
-            requires std::copy_constructible<T>
+        template <class AnyAllocator, class FN>
+        constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, FN&& where_join) &&
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return std::move(*this).join(insert_items, start_pos, _size(), std::forward<_FN>(where_join));
+            return std::move(*this).join(insert_items, start_pos, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -5069,7 +5352,7 @@ namespace __new_list_array_impl {
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the elements from `insert_items` after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
          * @tparam AnyAllocator The allocator type of the `list_array` `insert_items`.
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items The `list_array` containing the items to insert after elements where the predicate is true.
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param end_pos The ending index of the range to consider (exclusive).
@@ -5077,21 +5360,31 @@ namespace __new_list_array_impl {
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class AnyAllocator, class _FN = bool (*)(const T&)>
-        constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, size_t end_pos, _FN&& where_join) &&
-            requires std::copy_constructible<T>
+        template <class AnyAllocator, class FN>
+        constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, size_t end_pos, FN&& where_join) &&
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
             list_array<T, Allocator> res;
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
             if (end_pos > _size())
                 throw std::out_of_range("end_pos out of size limit");
-            for (auto& i : range(start_pos, end_pos)) {
-                res.push_back(std::move(i));
-                if (where_join(i))
-                    res.push_back(insert_items);
+            if constexpr (std::is_invocable_r_v<bool, FN, const T&>) {
+                for (auto& i : range(start_pos, end_pos)) {
+                    bool make_join = where_join(i);
+                    res.push_back(std::move(i));
+                    if (make_join)
+                        res.push_back(insert_items);
+                }
+            } else {
+                auto end = get_iterator(end_pos);
+                for (const_iterator begin = get_iterator(start_pos); begin != end; ++begin) {
+                    bool make_join = where_join(begin.absolute_index, *begin);
+                    res.push_back(std::move(*begin));
+                    if (make_join)
+                        res.push_back(insert_items);
+                }
             }
 
             return res;
@@ -5103,17 +5396,16 @@ namespace __new_list_array_impl {
          * This function iterates over all elements in the array. For each element where the `where_join` predicate returns true, it inserts the elements from the C-style array `insert_items` (with size `arr_size`) after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
          * @tparam arr_size The size of the C-style array `insert_items`.
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items The C-style array containing the items to insert after elements where the predicate is true.
          * @param where_join The predicate function to determine where to insert the items from `insert_items`.
          * @return A new `list_array` object containing the joined elements.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <size_t arr_size, class _FN>
-        constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], _FN&& where_join) &&
-            requires std::copy_constructible<T>
+        template <size_t arr_size, class FN>
+        constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], FN&& where_join) &&
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return std::move(*this).join(insert_items, arr_size, 0, _size(), std::forward<_FN>(where_join));
+            return std::move(*this).join(insert_items, arr_size, 0, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -5122,19 +5414,18 @@ namespace __new_list_array_impl {
          * This function iterates over the elements in the array, starting from the specified `start_pos`. For each element where the `where_join` predicate returns true, it inserts the elements from the C-style array `insert_items` (with size `arr_size`) after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
          * @tparam arr_size The size of the C-style array `insert_items`.
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items The C-style array containing the items to insert after elements where the predicate is true.
          * @param start_pos The starting index from which to insert the items from `insert_items`.
          * @param where_join The predicate function to determine where to insert the items from `insert_items`.
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <size_t arr_size, class _FN>
-        constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], size_t start_pos, _FN&& where_join) &&
-            requires std::copy_constructible<T>
+        template <size_t arr_size, class FN>
+        constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], size_t start_pos, FN&& where_join) &&
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return std::move(*this).join(insert_items, arr_size, start_pos, _size(), std::forward<_FN>(where_join));
+            return std::move(*this).join(insert_items, arr_size, start_pos, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -5143,7 +5434,7 @@ namespace __new_list_array_impl {
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the elements from the C-style array `insert_items` (with size `arr_size`) after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
          * @tparam arr_size The size of the C-style array `insert_items`.
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items The C-style array containing the items to insert after elements where the predicate is true.
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param end_pos The ending index of the range to consider (exclusive).
@@ -5151,13 +5442,12 @@ namespace __new_list_array_impl {
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <size_t arr_size, class _FN>
-        constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], size_t start_pos, size_t end_pos, _FN&& where_join) &&
-            requires std::copy_constructible<T>
+        template <size_t arr_size, class FN>
+        constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], size_t start_pos, size_t end_pos, FN&& where_join) &&
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return std::move(*this).join(insert_items, arr_size, start_pos, end_pos, std::forward<_FN>(where_join));
+            return std::move(*this).join(insert_items, arr_size, start_pos, end_pos, std::forward<FN>(where_join));
         }
 
         /**
@@ -5165,18 +5455,17 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array. For each element where the `where_join` predicate returns true, it inserts the elements from the raw array `insert_items` (with `items_count` elements) after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items A pointer to the beginning of the raw array containing the items to insert.
          * @param items_count The number of items in the raw array `insert_items`.
          * @param where_join The predicate function to determine where to insert the items from `insert_items`.
          * @return A new `list_array` object containing the joined elements.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class _FN>
-        constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, _FN&& where_join) &&
-            requires std::copy_constructible<T>
+        template <class FN>
+        constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, FN&& where_join) &&
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return std::move(*this).join(insert_items, items_count, 0, _size(), std::forward<_FN>(where_join));
+            return std::move(*this).join(insert_items, items_count, 0, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -5184,20 +5473,19 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the elements from the raw array `insert_items` (with `items_count` elements) after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items A pointer to the beginning of the raw array containing the items to insert.
          * @param items_count The number of items in the raw array `insert_items`.
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param where_join The predicate function to determine where to insert the items from `insert_items`.
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class _FN>
-        constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, size_t start_pos, _FN&& where_join) &&
+        template <class FN>
+        constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, size_t start_pos, FN&& where_join) &&
             requires std::copy_constructible<T>
         {
-            return std::move(*this).join(insert_items, items_count, start_pos, _size(), std::forward<_FN>(where_join));
+            return std::move(*this).join(insert_items, items_count, start_pos, _size(), std::forward<FN>(where_join));
         }
 
         /**
@@ -5205,7 +5493,7 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array within the specified range (`start_pos` to `end_pos`). For each element where the `where_join` predicate returns true, it inserts the elements from the raw array `insert_items` (with `items_count` elements) after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_items A pointer to the beginning of the raw array containing the items to insert.
          * @param items_count The number of items in the raw array `insert_items`.
          * @param start_pos The starting index of the range to consider (inclusive).
@@ -5214,11 +5502,10 @@ namespace __new_list_array_impl {
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
-        template <class _FN>
-        constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, size_t start_pos, size_t end_pos, _FN&& where_join) &&
-            requires std::copy_constructible<T>
+        template <class FN>
+        constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, size_t start_pos, size_t end_pos, FN&& where_join) &&
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
             list_array<T, Allocator> res;
             res.reserve_back(_size() * 2);
@@ -5226,10 +5513,21 @@ namespace __new_list_array_impl {
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
             if (end_pos > _size())
                 throw std::out_of_range("end_pos out of size limit");
-            for (auto& i : range(start_pos, end_pos)) {
-                res.push_back(std::move(i));
-                if (where_join(i))
-                    res.push_back(insert_items, items_count);
+            if constexpr (std::is_invocable_r_v<bool, FN, const T&>) {
+                for (auto& i : range(start_pos, end_pos)) {
+                    bool make_join = where_join(i);
+                    res.push_back(std::move(i));
+                    if (make_join)
+                        res.push_back(insert_items, items_count);
+                }
+            } else {
+                auto end = get_iterator(end_pos);
+                for (const_iterator begin = get_iterator(start_pos); begin != end; ++begin) {
+                    bool make_join = where_join(begin.absolute_index, *begin);
+                    res.push_back(std::move(*begin));
+                    if (make_join)
+                        res.push_back(insert_items, items_count);
+                }
             }
 
             return res;
@@ -5240,11 +5538,10 @@ namespace __new_list_array_impl {
          *
          * This function iterates over all elements in the array. For each element where the `where_join` predicate returns true, it inserts the `insert_item` after the element. The modified elements, along with the inserted items, are moved into a new `list_array` object.
          *
-         * @tparam _FN The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param insert_item The item to insert after elements where the predicate is true.
          * @param where_join The predicate function to determine where to insert the `insert_item`.
          * @return A new `list_array` object containing the joined elements.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         constexpr list_array<T, Allocator> join(const T& insert_item) &&
             requires std::copy_constructible<T>
@@ -5261,7 +5558,6 @@ namespace __new_list_array_impl {
          * @param start_pos The starting index from which to insert the `insert_item`.
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         constexpr list_array<T, Allocator> join(const T& insert_item, size_t start_pos) &&
             requires std::copy_constructible<T>
@@ -5280,7 +5576,6 @@ namespace __new_list_array_impl {
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         constexpr list_array<T, Allocator> join(const T& insert_item, size_t start_pos, size_t end_pos) &&
             requires std::copy_constructible<T>
@@ -5307,7 +5602,6 @@ namespace __new_list_array_impl {
          * @tparam AnyAllocator The allocator type of the `list_array` `insert_items`.
          * @param insert_items The `list_array` containing the items to insert after elements.
          * @return A new `list_array` object containing the joined elements.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         template <class AnyAllocator>
         constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items) &&
@@ -5326,7 +5620,6 @@ namespace __new_list_array_impl {
          * @param start_pos The starting index from which to insert the items from `insert_items`.
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         template <class AnyAllocator>
         constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos) &&
@@ -5347,7 +5640,6 @@ namespace __new_list_array_impl {
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         template <class AnyAllocator>
         constexpr list_array<T, AnyAllocator> join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, size_t end_pos) &&
@@ -5375,7 +5667,6 @@ namespace __new_list_array_impl {
          * @param insert_items A pointer to the beginning of the raw array containing the items to insert.
          * @param items_count The number of items in the raw array `insert_items`.
          * @return A new `list_array` object containing the joined elements.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count) &&
             requires std::copy_constructible<T>
@@ -5393,7 +5684,6 @@ namespace __new_list_array_impl {
          * @param start_pos The index where the insertion starts (inclusive).
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, size_t start_pos) &&
             requires std::copy_constructible<T>
@@ -5412,7 +5702,6 @@ namespace __new_list_array_impl {
          * @param end_pos The index where the insertion ends (exclusive).
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, size_t start_pos, size_t end_pos) &&
             requires std::copy_constructible<T>
@@ -5439,7 +5728,6 @@ namespace __new_list_array_impl {
          * @tparam arr_size The size of the C-style array `insert_items`.
          * @param insert_items The C-style array containing the items to insert after elements where the predicate is true.
          * @return A new `list_array` object containing the joined elements.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         template <size_t arr_size>
         constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size]) &&
@@ -5458,7 +5746,6 @@ namespace __new_list_array_impl {
          * @param start_pos The starting index from which to insert the items from `insert_items`.
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         template <size_t arr_size>
         constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], size_t start_pos) &&
@@ -5479,7 +5766,6 @@ namespace __new_list_array_impl {
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-         * @tparam Requires the element type (`T`) must be copy constructible.
          */
         template <size_t arr_size>
         constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], size_t start_pos, size_t end_pos) &&
@@ -5488,8 +5774,25 @@ namespace __new_list_array_impl {
             return std::move(*this).join(insert_items, arr_size, start_pos, _size());
         }
 
+/// @}
 #pragma endregion
 #pragma region contains
+
+        /// @name contains
+        /// @{
+        /**
+         * @brief Checks if the array contains a specific value.
+         *
+         * This function checks if the array contains the given `value` within the entire array. It uses the default equality comparison operator (`==`) to determine equality.
+         *
+         * @param value The value to search for.
+         * @return `true` if the array contains the `value`, `false` otherwise.
+         */
+        constexpr [[nodiscard]] bool contains(const T& value) const&
+            requires std::equality_comparable<T>
+        {
+            return contains(0, _size(), value);
+        }
 
         /**
          * @brief Checks if the array contains a specific value.
@@ -5499,12 +5802,11 @@ namespace __new_list_array_impl {
          * @param value The value to search for.
          * @param start The starting index from which to search for the `value`.
          * @return `true` if the array contains the `value`, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
-        constexpr [[nodiscard]] bool contains(const T& value, size_t start = 0) const&
+        constexpr [[nodiscard]] bool contains(size_t start, const T& value) const&
             requires std::equality_comparable<T>
         {
-            return contains(value, start, _size());
+            return contains(start, _size(), value);
         }
 
         /**
@@ -5516,12 +5818,27 @@ namespace __new_list_array_impl {
          * @param start The starting index of the range to search (inclusive).
          * @param end The ending index of the range to search (exclusive).
          * @return `true` if the array contains the `value`, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
-        constexpr [[nodiscard]] bool contains(const T& value, size_t start, size_t end) const&
+        constexpr [[nodiscard]] bool contains(size_t start, size_t end, const T& value) const&
             requires std::equality_comparable<T>
         {
-            return find(value, start, end) != npos;
+            return find(start, end, value) != npos;
+        }
+
+        /**
+         * @brief Checks if the array contains a specific C-style array.
+         *
+         * This function checks if the array contains the elements in the given C-style array `arr` within the entire array.
+         *
+         * @tparam arr_size The size of the C-style array `arr`.
+         * @param arr The C-style array to search for.
+         * @return `true` if the array contains the `arr` array, `false` otherwise.
+         */
+        template <size_t arr_size>
+        constexpr [[nodiscard]] bool contains(const T (&arr)[arr_size]) const&
+            requires std::equality_comparable<T>
+        {
+            return contains(0, _size(), arr, arr_size);
         }
 
         /**
@@ -5533,13 +5850,12 @@ namespace __new_list_array_impl {
          * @param arr The C-style array to search for.
          * @param start The starting index from which to search for the `arr` array.
          * @return `true` if the array contains the `arr` array, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <size_t arr_size>
-        constexpr [[nodiscard]] bool contains(const T (&arr)[arr_size], size_t start = 0) const&
+        constexpr [[nodiscard]] bool contains(size_t start, const T (&arr)[arr_size]) const&
             requires std::equality_comparable<T>
         {
-            return contains(arr, arr_size, start, _size());
+            return contains(start, _size(), arr, arr_size);
         }
 
         /**
@@ -5552,13 +5868,12 @@ namespace __new_list_array_impl {
          * @param start The starting index of the range to search in this array (inclusive).
          * @param end The ending index of the range to search in this array (exclusive).
          * @return `true` if the array contains the `arr` array, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <size_t arr_size>
-        constexpr [[nodiscard]] bool contains(const T (&arr)[arr_size], size_t start, size_t end) const&
+        constexpr [[nodiscard]] bool contains(size_t start, size_t end, const T (&arr)[arr_size]) const&
             requires std::equality_comparable<T>
         {
-            return contains(arr, arr_size, start, end);
+            return contains(start, end, arr, arr_size);
         }
 
         /**
@@ -5570,12 +5885,27 @@ namespace __new_list_array_impl {
          * @param arr_size The size of the raw array `arr`.
          * @param start The starting index from which to search for the `arr` array.
          * @return `true` if the array contains the `arr` array, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
-        constexpr [[nodiscard]] bool contains(const T* arr, size_t arr_size, size_t start = 0) const&
+        constexpr [[nodiscard]] bool contains(const T* arr, size_t arr_size) const&
             requires std::equality_comparable<T>
         {
-            return contains(arr, arr_size, start, _size());
+            return contains(0, _size(), arr, arr_size);
+        }
+
+        /**
+         * @brief Checks if the array contains a specific raw array.
+         *
+         * This function checks if the array contains the elements in the given raw array `arr` (with size `arr_size`) within the entire array.
+         *
+         * @param arr A pointer to the beginning of the raw array to search for.
+         * @param arr_size The size of the raw array `arr`.
+         * @param start The starting index from which to search for the `arr` array.
+         * @return `true` if the array contains the `arr` array, `false` otherwise.
+         */
+        constexpr [[nodiscard]] bool contains(size_t start, const T* arr, size_t arr_size) const&
+            requires std::equality_comparable<T>
+        {
+            return contains(start, _size(), arr, arr_size);
         }
 
         /**
@@ -5588,12 +5918,27 @@ namespace __new_list_array_impl {
          * @param start The starting index of the range to search in this array (inclusive).
          * @param end The ending index of the range to search in this array (exclusive).
          * @return `true` if the array contains the `arr` array, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
-        constexpr [[nodiscard]] bool contains(const T* arr, size_t arr_size, size_t start, size_t end) const&
+        constexpr [[nodiscard]] bool contains(size_t start, size_t end, const T* arr, size_t arr_size) const&
             requires std::equality_comparable<T>
         {
-            return find(arr, arr_size, start, end) != npos;
+            return find(start, end, arr, arr + arr_size) != npos;
+        }
+
+        /**
+         * @brief Checks if the array contains a specific `list_array`.
+         *
+         * This function checks if the array contains the elements in the given `list_array` `value` within the entire array.
+         *
+         * @tparam AnyAllocator The allocator type of the `list_array` `value`.
+         * @param value The `list_array` to search for.
+         * @return `true` if the array contains the `value` list_array, `false` otherwise.
+         */
+        template <class AnyAllocator>
+        constexpr [[nodiscard]] bool contains(const list_array<T, AnyAllocator>& value) const&
+            requires std::equality_comparable<T>
+        {
+            return contains(0, _size(), value);
         }
 
         /**
@@ -5605,13 +5950,12 @@ namespace __new_list_array_impl {
          * @param value The `list_array` to search for.
          * @param start The starting index from which to search for the `value` list_array.
          * @return `true` if the array contains the `value` list_array, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <class AnyAllocator>
-        constexpr [[nodiscard]] bool contains(const list_array<T, AnyAllocator>& value, size_t start = 0) const&
+        constexpr [[nodiscard]] bool contains(size_t start, const list_array<T, AnyAllocator>& value) const&
             requires std::equality_comparable<T>
         {
-            return contains(value, 0, value._size(), start, _size());
+            return contains(start, _size(), value);
         }
 
         /**
@@ -5624,13 +5968,12 @@ namespace __new_list_array_impl {
          * @param start The starting index of the range to search in this array (inclusive).
          * @param end The ending index of the range to search in this array (exclusive).
          * @return `true` if the array contains the `value` list_array, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <class AnyAllocator>
-        constexpr [[nodiscard]] bool contains(const list_array<T, AnyAllocator>& value, size_t start, size_t end) const&
+        constexpr [[nodiscard]] bool contains(size_t start, size_t end, const list_array<T, AnyAllocator>& value) const&
             requires std::equality_comparable<T>
         {
-            return contains(value, 0, value._size(), start, end);
+            return contains(start, end, value);
         }
 
         /**
@@ -5639,77 +5982,118 @@ namespace __new_list_array_impl {
          * This function checks if the array contains the elements in the given list_array `value`, starting from `value_start` and up to `value_end`, within the range of this array from `start` to `end`.
          *
          * @tparam AnyAllocator The allocator type of the list_array `value`.
-         * @param value The list_array to search for.
-         * @param value_start The starting index within `value` to consider (inclusive).
-         * @param value_end The ending index within `value` to consider (exclusive).
+         * @param value_begin The iterator to the beginning of the container to search for.
+         * @param value_end The iterator to the end of the container to search for.
+         * @return `true` if the array contains the specified sub-array of `value`, `false` otherwise.
+         */
+        template <class any_iter>
+        constexpr [[nodiscard]] bool contains(any_iter value_begin, any_iter value_end) const&
+            requires std::equality_comparable_with<T, typename std::iterator_traits<any_iter>::value_type>
+        {
+            return contains(0, _size(), value_begin, value_end);
+        }
+
+        /**
+         * @brief Checks if the array contains a specific list_array within a specified range.
+         *
+         * This function checks if the array contains the elements in the given list_array `value`, starting from `value_start` and up to `value_end`, within the range of this array from `start` to `end`.
+         *
+         * @tparam AnyAllocator The allocator type of the list_array `value`.
+         * @param value_begin The iterator to the beginning of the container to search for.
+         * @param value_end The iterator to the end of the container to search for.
+         * @param start The starting index of the range to search in this array (inclusive).
+         * @return `true` if the array contains the specified sub-array of `value`, `false` otherwise.
+         */
+        template <class any_iter>
+        constexpr [[nodiscard]] bool contains(size_t start, any_iter value_begin, any_iter value_end) const&
+            requires std::equality_comparable_with<T, typename std::iterator_traits<any_iter>::value_type>
+        {
+            return contains(start, _size(), value_begin, value_end);
+        }
+
+        /**
+         * @brief Checks if the array contains a specific list_array within a specified range.
+         *
+         * This function checks if the array contains the elements in the given list_array `value`, starting from `value_start` and up to `value_end`, within the range of this array from `start` to `end`.
+         *
+         * @tparam AnyAllocator The allocator type of the list_array `value`.
+         * @param value_begin The iterator to the beginning of the container to search for.
+         * @param value_end The iterator to the end of the container to search for.
          * @param start The starting index of the range to search in this array (inclusive).
          * @param end The ending index of the range to search in this array (exclusive).
          * @return `true` if the array contains the specified sub-array of `value`, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
-        template <class AnyAllocator>
-        constexpr [[nodiscard]] bool contains(const list_array<T, AnyAllocator>& value, size_t value_start, size_t value_end, size_t start, size_t end) const&
-            requires std::equality_comparable<T>
+        template <class any_iter>
+        constexpr [[nodiscard]] bool contains(size_t start, size_t end, any_iter value_begin, any_iter value_end) const&
+            requires std::equality_comparable_with<T, typename std::iterator_traits<any_iter>::value_type>
         {
-            return find(value, value_start, value_end, start, end) != npos;
+            return contains(start, end, value_begin, value_end);
         }
 
         /**
          * @brief Checks if at least one element in the entire array satisfies a predicate.
          *
-         * This function is similar to `contains_one(size_t, size_t, _Fn&&)`, but it considers the entire array.
+         * This function is similar to `contains_one(size_t, size_t, FN&&)`, but it considers the entire array.
          *
-         * @tparam _Fn The type of the predicate function.
+         * @tparam FN The type of the predicate function.
          * @param check_function The predicate function.
          * @return `true` if at least one element satisfies the predicate, `false` otherwise.
          */
-        template <class _Fn>
-        constexpr [[nodiscard]] bool contains_one(_Fn&& check_function) const& {
-            return contains_one(0, _size(), check_function);
+        template <class FN>
+        constexpr [[nodiscard]] bool contains_one(FN&& check_function) const&
+            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>
+        {
+            return contains_one(0, _size(), std::forward<FN>(check_function));
         }
 
         /**
          * @brief Counts how many elements in the entire array satisfy a predicate.
          *
-         * This function is similar to `contains_multiply(size_t, size_t, _Fn&&)`, but it considers the entire array.
+         * This function is similar to `contains_multiply(size_t, size_t, FN&&)`, but it considers the entire array.
          *
-         * @tparam _Fn The type of the predicate function.
+         * @tparam FN The type of the predicate function.
          * @param check_function The predicate function.
          * @return The number of elements that satisfy the predicate.
          */
-        template <class _Fn>
-        constexpr [[nodiscard]] size_t contains_multiply(_Fn&& check_function) const& {
-            return contains_multiply(0, _size(), check_function);
+        template <class FN>
+        constexpr [[nodiscard]] size_t contains_multiply(FN&& check_function) const&
+            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>
+        {
+            return contains_multiply(0, _size(), std::forward<FN>(check_function));
         }
 
         /**
          * @brief Checks if at least one element from a starting position satisfies a predicate.
          *
-         * This function is similar to `contains_one(size_t, size_t, _Fn&&)`, but it starts checking from the specified `start` index and continues until the end of the array.
+         * This function is similar to `contains_one(size_t, size_t, FN&&)`, but it starts checking from the specified `start` index and continues until the end of the array.
          *
-         * @tparam _Fn The type of the predicate function.
+         * @tparam FN The type of the predicate function.
          * @param start The starting index.
          * @param check_function The predicate function.
          * @return `true` if at least one element satisfies the predicate, `false` otherwise.
          */
-        template <class _Fn>
-        constexpr [[nodiscard]] bool contains_one(size_t start, _Fn&& check_function) const& {
-            return contains_one(start, _size(), check_function);
+        template <class FN>
+        constexpr [[nodiscard]] bool contains_one(size_t start, FN&& check_function) const&
+            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>
+        {
+            return contains_one(start, _size(), std::forward<FN>(check_function));
         }
 
         /**
          * @brief Counts how many elements from a starting position satisfy a predicate.
          *
-         * This function is similar to `contains_multiply(size_t, size_t, _Fn&&)`, but it starts counting from the specified `start` index and continues until the end of the array.
+         * This function is similar to `contains_multiply(size_t, size_t, FN&&)`, but it starts counting from the specified `start` index and continues until the end of the array.
          *
-         * @tparam _Fn The type of the predicate function.
+         * @tparam FN The type of the predicate function.
          * @param start The starting index.
          * @param check_function The predicate function.
          * @return The number of elements that satisfy the predicate.
          */
-        template <class _Fn>
-        constexpr [[nodiscard]] size_t contains_multiply(size_t start, _Fn&& check_function) const& {
-            return contains_multiply(start, _size(), check_function);
+        template <class FN>
+        constexpr [[nodiscard]] size_t contains_multiply(size_t start, FN&& check_function) const&
+            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>
+        {
+            return contains_multiply(start, _size(), std::forward<FN>(check_function));
         }
 
         /**
@@ -5717,18 +6101,17 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the specified range (`start` to `end`) and checks if at least one of them satisfies the given predicate `check_function`.
          *
-         * @tparam _Fn The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param start The starting index of the range (inclusive).
          * @param end The ending index of the range (exclusive).
          * @param check_function The predicate function to apply to each element.
          * @return `true` if at least one element satisfies the predicate, `false` otherwise.
          */
-        template <class _Fn>
-        constexpr [[nodiscard]] bool contains_one(size_t start, size_t end, _Fn&& check_function) const& {
-            for (const T& it : range(start, end))
-                if (check_function(it))
-                    return true;
-            return false;
+        template <class FN>
+        constexpr [[nodiscard]] bool contains_one(size_t start, size_t end, FN&& check_function) const&
+            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>
+        {
+            return find_if(start, end, std::forward<FN>(check_function)) != npos;
         }
 
         /**
@@ -5736,23 +6119,35 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the specified range (`start` to `end`) and counts how many of them satisfy the given predicate `check_function`.
          *
-         * @tparam _Fn The type of the predicate function. It must be invocable with `const T&`.
+         * @tparam FN The type of the predicate function. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          * @param start The starting index of the range (inclusive).
          * @param end The ending index of the range (exclusive).
          * @param check_function The predicate function to apply to each element.
          * @return The number of elements that satisfy the predicate.
          */
-        template <class _Fn>
-        constexpr [[nodiscard]] size_t contains_multiply(size_t start, size_t end, _Fn&& check_function) const& {
+        template <class FN>
+        constexpr [[nodiscard]] size_t contains_multiply(size_t start, size_t end, FN&& check_function) const&
+            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>
+        {
             size_t i = 0;
-            for (const T& it : range(start, end))
-                if (check_function(it))
-                    ++i;
+            const_iterator _end = get_iterator(end);
+            if constexpr (std::is_invocable_r_v<bool, FN, size_t, T>) {
+                for (const_iterator it = get_iterator(start); it != _end; ++it)
+                    if (check_function(it.absolute_index, *it))
+                        ++i;
+            } else
+                for (const_iterator it = get_iterator(start); it != _end; ++it)
+                    if (check_function(*it))
+                        ++i;
             return i;
         }
 
+/// @}
 #pragma endregion
 #pragma region sort
+
+        /// @name sort
+        /// @{
 
         /**
          * @brief Sorts the list_array in ascending order.
@@ -5879,12 +6274,12 @@ namespace __new_list_array_impl {
          *
          * This function sorts the elements in the list_array in-place using the provided comparison function `compare`. It modifies the original list_array and does not return a new object.
          *
-         * @tparam _Fn The type of the comparison function. It should take two const references to `T` and return `true` if the first element is less than the second, `false` otherwise.
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if the first element is less than the second, `false` otherwise.
          * @param compare The comparison function to use for sorting.
          * @return A reference to the modified list_array after sorting.
          */
-        template <class _FN>
-        constexpr list_array<T, Allocator>& sort(_FN&& compare) & {
+        template <class FN>
+        constexpr list_array<T, Allocator>& sort(FN&& compare) & {
             size_t curr_L_size = _size / 2 + 1;
             size_t curr_M_size = _size / 2 + 1;
             T* L = allocator_and_size.allocate(_size / 2 + 1);
@@ -5970,19 +6365,22 @@ namespace __new_list_array_impl {
          *
          * This function sorts the elements in the list_array using the provided comparison function `compare`. It returns a new list_array object containing the sorted elements, leaving the original list_array unmodified.
          *
-         * @tparam _Fn The type of the comparison function. It should take two const references to `T` and return `true` if the first element is less than the second, `false` otherwise.
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if the first element is less than the second, `false` otherwise.
          * @param compare The comparison function to use for sorting.
          * @return A new list_array object containing the sorted elements.
          */
-        template <class _FN>
-        constexpr [[nodiscard]] list_array<T, Allocator> sort(_FN&& compare) && {
-            sort(std::forward<_FN>(compare));
+        template <class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> sort(FN&& compare) && {
+            sort(std::forward<FN>(compare));
             return std::move(*this);
         }
 
+/// @}
 #pragma endregion
 #pragma region concat
 
+        /// @name concat
+        /// @{
         /**
          * @brief Creates a new list_array object by concatenating multiple containers or values.
          *
@@ -6066,24 +6464,26 @@ namespace __new_list_array_impl {
             return res;
         }
 
+/// @}
 #pragma endregion
 #pragma region where
 
+        /// @name where
+        /// @{
         /**
          * @brief Filters elements from the array based on a predicate.
          *
          * This function creates a new list_array object containing only the elements from the original array that satisfy the given predicate `check_fn`. The predicate can be a lambda function, a function object, or a function pointer. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          *
-         * @tparam _Fn The type of the predicate function.
+         * @tparam FN The type of the predicate function.
          * @param check_fn The predicate function to apply to each element.
          * @return A new list_array object containing the filtered elements.
-         * @tparam Requires the element type (`T`) to be copy constructible.
          */
-        template <class _Fn>
-        constexpr [[nodiscard]] list_array<T, Allocator> where(_Fn&& check_fn) const&
-            requires std::copy_constructible<T>
+        template <class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> where(FN&& check_fn) const&
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return where(0, _size(), check_fn);
+            return where(0, _size(), std::forward<FN>(check_fn));
         }
 
         /**
@@ -6091,17 +6491,16 @@ namespace __new_list_array_impl {
          *
          * This function creates a new list_array object containing only the elements from the original array, starting from the specified `start_pos`, that satisfy the given predicate `check_fn`. The predicate can be a lambda function, a function object, or a function pointer. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          *
-         * @tparam _Fn The type of the predicate function.
+         * @tparam FN The type of the predicate function.
          * @param start_pos The starting index from which to filter elements.
          * @param check_fn The predicate function to apply to each element.
          * @return A new list_array object containing the filtered elements.
-         * @tparam Requires the element type (`T`) to be copy constructible.
          */
-        template <class _Fn>
-        constexpr [[nodiscard]] list_array<T, Allocator> where(size_t start_pos, _Fn&& check_fn) const&
-            requires std::copy_constructible<T>
+        template <class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> where(size_t start_pos, FN&& check_fn) const&
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
-            return where(start_pos, _size(), check_fn);
+            return where(start_pos, _size(), std::forward<FN>(check_fn));
         }
 
         /**
@@ -6109,16 +6508,15 @@ namespace __new_list_array_impl {
          *
          * This function creates a new list_array object containing only the elements from the original array, within the range from `start_pos` to `end_pos`, that satisfy the given predicate `check_fn`. The predicate can be a lambda function, a function object, or a function pointer. It can take either a `const T&` (element) or `size_t, const T&` (index, element) as arguments.
          *
-         * @tparam _Fn The type of the predicate function.
+         * @tparam FN The type of the predicate function.
          * @param start_pos The starting index of the range to filter from (inclusive).
          * @param end_pos The ending index of the range to filter from (exclusive).
          * @param check_fn The predicate function to apply to each element.
          * @return A new list_array object containing the filtered elements.
-         * @tparam Requires the element type (`T`) to be copy constructible.
          */
-        template <class _Fn>
-        constexpr [[nodiscard]] list_array<T, Allocator> where(size_t start_pos, size_t end_pos, _Fn&& check_fn) const&
-            requires std::copy_constructible<T>
+        template <class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> where(size_t start_pos, size_t end_pos, FN&& check_fn) const&
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
             list_array<T, Allocator> res;
             if (start_pos > end_pos)
@@ -6126,11 +6524,11 @@ namespace __new_list_array_impl {
             if (end_pos > _size())
                 throw std::out_of_range("end_pos out of size limit");
             res.reserve_back(end_pos - start_pos);
-            if constexpr (std::is_invocable_v<_Fn, size_t, T>) {
-                size_t pos = start_pos;
-                for (auto& i : range(start_pos, end_pos))
-                    if (check_fn(pos++, i))
-                        res.push_back(i);
+            if constexpr (std::is_invocable_r_v<bool, FN, size_t, const T&>) {
+                auto end = get_iterator(end_pos);
+                for (const_iterator begin = get_iterator(start_pos); begin != end; ++begin)
+                    if (check_fn(begin.absolute_index, *begin))
+                        res.push_back(*begin);
             } else {
                 for (auto& i : range(start_pos, end_pos))
                     if (check_fn(i))
@@ -6146,54 +6544,60 @@ namespace __new_list_array_impl {
          *
          * This function is similar to the lvalue reference version of `where`, but it operates on an rvalue reference (temporary) of the `list_array`. It moves the elements that satisfy the predicate `check_fn` into a new list_array object.
          *
-         * @tparam _Fn The type of the predicate function.
+         * @tparam FN The type of the predicate function.
          * @param check_fn The predicate function to apply to each element.
          * @return A new list_array object containing the filtered elements.
          */
-        template <class _Fn>
-        constexpr [[nodiscard]] list_array<T, Allocator> where(_Fn&& check_fn) && {
-            return take().where(0, _size(), check_fn);
+        template <class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> where(FN&& check_fn) &&
+            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>
+        {
+            return take().where(0, _size(), std::forward<FN>(check_fn));
         }
 
         /**
          * @brief Filters elements from the array based on a predicate, starting from a given position (move version).
          *
-         * This function is similar to the lvalue reference version of `where(size_t, _Fn&&)`, but it operates on an rvalue reference (temporary) of the `list_array`. It moves the elements starting from the specified `start_pos` that satisfy the predicate `check_fn` into a new list_array object.
+         * This function is similar to the lvalue reference version of `where(size_t, FN&&)`, but it operates on an rvalue reference (temporary) of the `list_array`. It moves the elements starting from the specified `start_pos` that satisfy the predicate `check_fn` into a new list_array object.
          *
-         * @tparam _Fn The type of the predicate function.
+         * @tparam FN The type of the predicate function.
          * @param start_pos The starting index from which to filter elements.
          * @param check_fn The predicate function to apply to each element.
          * @return A new list_array object containing the filtered elements.
          */
-        template <class _Fn>
-        constexpr [[nodiscard]] list_array<T, Allocator> where(size_t start_pos, _Fn&& check_fn) && {
-            return take().where(start_pos, _size(), check_fn);
+        template <class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> where(size_t start_pos, FN&& check_fn) &&
+            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>
+        {
+            return take().where(start_pos, _size(), std::forward<FN>(check_fn));
         }
 
         /**
          * @brief Filters elements from the array based on a predicate within a specified range (move version).
          *
-         * This function is similar to the lvalue reference version of `where(size_t, size_t, _Fn&&)`, but it operates on an rvalue reference (temporary) of the `list_array`. It moves the elements within the range from `start_pos` to `end_pos` that satisfy the predicate `check_fn` into a new list_array object.
+         * This function is similar to the lvalue reference version of `where(size_t, size_t, FN&&)`, but it operates on an rvalue reference (temporary) of the `list_array`. It moves the elements within the range from `start_pos` to `end_pos` that satisfy the predicate `check_fn` into a new list_array object.
          *
-         * @tparam _Fn The type of the predicate function.
+         * @tparam FN The type of the predicate function.
          * @param start_pos The starting index of the range to filter from (inclusive).
          * @param end_pos The ending index of the range to filter from (exclusive).
          * @param check_fn The predicate function to apply to each element.
          * @return A new list_array object containing the filtered elements.
          */
-        template <class _Fn>
-        constexpr [[nodiscard]] list_array<T, Allocator> where(size_t start_pos, size_t end_pos, _Fn&& check_fn) && {
+        template <class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> where(size_t start_pos, size_t end_pos, FN&& check_fn) &&
+            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>
+        {
             list_array<T, Allocator> res;
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
             if (end_pos > _size())
                 throw std::out_of_range("end_pos out of size limit");
             res.reserve_back(end_pos - start_pos);
-            if constexpr (std::is_invocable_v<_Fn, size_t, T>) {
-                size_t pos = start_pos;
-                for (auto& i : range(start_pos, end_pos))
-                    if (check_fn(pos++, i))
-                        res.push_back(std::move(i));
+            if constexpr (std::is_invocable_r_v<bool, FN, size_t, const T&>) {
+                auto end = get_iterator(end_pos);
+                for (const_iterator begin = get_iterator(start_pos); begin != end; ++begin)
+                    if (check_fn(begin.absolute_index, *begin))
+                        res.push_back(std::move(*begin));
             } else {
                 for (auto& i : range(start_pos, end_pos))
                     if (check_fn(i))
@@ -6204,21 +6608,26 @@ namespace __new_list_array_impl {
             return res;
         }
 
+/// @}
 #pragma endregion
 #pragma region for each
 
+        /// @name for each
+        /// @{
         /**
          * @brief Applies a function to each element in the array in reverse order.
          *
          * This function iterates over the elements in the array in reverse order (from the last element to the first) and applies the given function `iterate_fn` to each element. The function can modify the elements in the array.
          *
-         * @tparam _Fn The type of the function to apply. It must be invocable with either `T&` or `size_t, T&` (index, element).
+         * @tparam FN The type of the function to apply. It must be invocable with either `T&` or `size_t, T&` (index, element).
          * @param iterate_fn The function to apply to each element.
          * @return A reference to this `list_array` after the function has been applied to all elements.
          */
-        template <class _Fn>
-        constexpr list_array<T, Allocator>& forEachReverse(_Fn&& iterate_fn) & {
-            return forEachReverse(0, _size(), std::forward<_Fn>(iterate_fn));
+        template <class FN>
+        constexpr list_array<T, Allocator>& for_each_reverse(FN&& iterate_fn) &
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+        {
+            return for_each_reverse(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         /**
@@ -6226,15 +6635,17 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array in reverse order, starting from the specified `start_pos`, and applies the given function `iterate_fn` to each element. The function can modify the elements in the array.
          *
-         * @tparam _Fn The type of the function to apply.
+         * @tparam FN The type of the function to apply.
          * @param start_pos The starting index from which to apply the function in reverse order.
          * @param iterate_fn The function to apply to each element.
          * @return A reference to this `list_array` after the function has been applied to all elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of array.
          */
-        template <class _Fn>
-        constexpr list_array<T, Allocator>& forEachReverse(size_t start_pos, _Fn&& iterate_fn) & {
-            return forEachReverse(start_pos, _size(), std::forward<_Fn>(iterate_fn));
+        template <class FN>
+        constexpr list_array<T, Allocator>& for_each_reverse(size_t start_pos, FN&& iterate_fn) &
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+        {
+            return for_each_reverse(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         /**
@@ -6242,7 +6653,7 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array in reverse order, within the range from `start_pos` to `end_pos`, and applies the given function `iterate_fn` to each element. The function can modify the elements in the array.
          *
-         * @tparam _Fn The type of the function to apply.
+         * @tparam FN The type of the function to apply.
          * @param start_pos The starting index of the range to apply the function to (inclusive).
          * @param end_pos The ending index of the range to apply the function to (exclusive).
          * @param iterate_fn The function to apply to each element.
@@ -6250,13 +6661,15 @@ namespace __new_list_array_impl {
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
-        template <class _Fn>
-        constexpr list_array<T, Allocator>& forEachReverse(size_t start_pos, size_t end_pos, _Fn&& iterate_fn) & {
+        template <class FN>
+        constexpr list_array<T, Allocator>& for_each_reverse(size_t start_pos, size_t end_pos, FN&& iterate_fn) &
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+        {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
             if (end_pos > _size())
                 throw std::out_of_range("end_pos out of size limit");
-            if constexpr (std::is_invocable_v<_Fn, size_t, T>) {
+            if constexpr (std::is_invocable_v<FN, size_t, T&>) {
                 size_t pos = start_pos;
                 for (T& i : reverse_range(start_pos, end_pos))
                     iterate_fn(--pos, i);
@@ -6270,50 +6683,56 @@ namespace __new_list_array_impl {
         /**
          * @brief Applies a function to each element in the array in reverse order (move version).
          *
-         * This function is similar to the lvalue reference version of `forEachReverse`, but it operates on an rvalue reference (temporary) of the `list_array`. It applies the given function `iterate_fn` to each element in reverse order and then moves the modified elements into a new `list_array` object.
+         * This function is similar to the lvalue reference version of `for_each_reverse`, but it operates on an rvalue reference (temporary) of the `list_array`. It applies the given function `iterate_fn` to each element in reverse order and then moves the modified elements into a new `list_array` object.
          *
-         * @tparam _Fn The type of the function to apply.
+         * @tparam FN The type of the function to apply.
          * @param iterate_fn The function to apply to each element.
          */
-        template <class _Fn>
-        constexpr void forEachReverse(_Fn&& iterate_fn) && {
-            std::move(*this).forEachReverse(0, _size(), std::forward<_Fn>(iterate_fn));
+        template <class FN>
+        constexpr void for_each_reverse(FN&& iterate_fn) &&
+            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&>
+        {
+            std::move(*this).for_each_reverse(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         /**
          * @brief Applies a function to each element in the array in reverse order, starting from a given position (move version).
          *
-         * This function is similar to the lvalue reference version of `forEachReverse(size_t, _Fn&&)`, but it operates on an rvalue reference (temporary) of the `list_array`. It applies the given function `iterate_fn` to each element in reverse order, starting from the specified `start_pos`, and then moves the modified elements into a new `list_array` object.
+         * This function is similar to the lvalue reference version of `for_each_reverse(size_t, FN&&)`, but it operates on an rvalue reference (temporary) of the `list_array`. It applies the given function `iterate_fn` to each element in reverse order, starting from the specified `start_pos`, and then moves the modified elements into a new `list_array` object.
          *
-         * @tparam _Fn The type of the function to apply.
+         * @tparam FN The type of the function to apply.
          * @param start_pos The starting index from which to apply the function in reverse order.
          * @param iterate_fn The function to apply to each element.
          * @throws std::invalid_argument If `start_pos` is greater than size of array.
          */
-        template <class _Fn>
-        constexpr void forEachReverse(size_t start_pos, _Fn&& iterate_fn) && {
-            std::move(*this).forEachReverse(start_pos, _size(), std::forward<_Fn>(iterate_fn));
+        template <class FN>
+        constexpr void for_each_reverse(size_t start_pos, FN&& iterate_fn) &&
+            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&>
+        {
+            std::move(*this).for_each_reverse(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         /**
          * @brief Applies a function to each element in the array in reverse order within a specified range (move version).
          *
-         * This function is similar to the lvalue reference version of `forEachReverse(size_t, size_t, _Fn&&)`, but it operates on an rvalue reference (temporary) of the `list_array`. It applies the given function `iterate_fn` to each element in reverse order, within the range from `start_pos` to `end_pos`, and then moves the modified elements into a new `list_array` object.
+         * This function is similar to the lvalue reference version of `for_each_reverse(size_t, size_t, FN&&)`, but it operates on an rvalue reference (temporary) of the `list_array`. It applies the given function `iterate_fn` to each element in reverse order, within the range from `start_pos` to `end_pos`, and then moves the modified elements into a new `list_array` object.
          *
-         * @tparam _Fn The type of the function to apply.
+         * @tparam FN The type of the function to apply.
          * @param start_pos The starting index of the range to apply the function to (inclusive).
          * @param end_pos The ending index of the range to apply the function to (exclusive).
          * @param iterate_fn The function to apply to each element.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
-        template <class _Fn>
-        constexpr void forEachReverse(size_t start_pos, size_t end_pos, _Fn&& iterate_fn) && {
+        template <class FN>
+        constexpr void for_each_reverse(size_t start_pos, size_t end_pos, FN&& iterate_fn) &&
+            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&>
+        {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
             if (end_pos > _size())
                 throw std::out_of_range("end_pos out of size limit");
-            if constexpr (std::is_invocable_v<_Fn, size_t, T>) {
+            if constexpr (std::is_invocable_v<FN, size_t, T&&>) {
                 size_t pos = start_pos;
                 for (T& i : reverse_range(start_pos, end_pos))
                     iterate_fn(--pos, std::move(i));
@@ -6327,13 +6746,15 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array in reverse order (from the last element to the first) and applies the given function `iterate_fn` to each element. The function cannot modify the elements in the array.
          *
-         * @tparam _Fn The type of the function to apply. It must be invocable with `const T&` or `size_t, const T&` (index, element).
+         * @tparam FN The type of the function to apply. It must be invocable with `const T&` or `size_t, const T&` (index, element).
          * @param iterate_fn The function to apply to each element.
          * @return A reference to this `list_array` after the function has been applied to all elements.
          */
-        template <class _Fn>
-        constexpr const list_array<T, Allocator>& forEachReverse(_Fn&& iterate_fn) const& {
-            return forEachReverse(0, _size(), std::forward<_Fn>(iterate_fn));
+        template <class FN>
+        constexpr const list_array<T, Allocator>& for_each_reverse(FN&& iterate_fn) const&
+            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&>
+        {
+            return for_each_reverse(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         /**
@@ -6341,15 +6762,17 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array in reverse order, starting from the specified `start_pos`, and applies the given function `iterate_fn` to each element. The function cannot modify the elements in the array.
          *
-         * @tparam _Fn The type of the function to apply.
+         * @tparam FN The type of the function to apply.
          * @param start_pos The starting index from which to apply the function in reverse order.
          * @param iterate_fn The function to apply to each element.
          * @return A reference to this `list_array` after the function has been applied to all elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of array.
          */
-        template <class _Fn>
-        constexpr const list_array<T, Allocator>& forEachReverse(size_t start_pos, _Fn&& iterate_fn) const& {
-            return forEachReverse(start_pos, _size(), std::forward<_Fn>(iterate_fn));
+        template <class FN>
+        constexpr const list_array<T, Allocator>& for_each_reverse(size_t start_pos, FN&& iterate_fn) const&
+            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&>
+        {
+            return for_each_reverse(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         /**
@@ -6357,7 +6780,7 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array in reverse order, within the range from `start_pos` to `end_pos`, and applies the given function `iterate_fn` to each element. The function cannot modify the elements in the array.
          *
-         * @tparam _Fn The type of the function to apply.
+         * @tparam FN The type of the function to apply.
          * @param start_pos The starting index of the range to apply the function to (inclusive).
          * @param end_pos The ending index of the range to apply the function to (exclusive).
          * @param iterate_fn The function to apply to each element.
@@ -6365,13 +6788,15 @@ namespace __new_list_array_impl {
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
-        template <class _Fn>
-        constexpr const list_array<T, Allocator>& forEachReverse(size_t start_pos, size_t end_pos, _Fn&& iterate_fn) const& {
+        template <class FN>
+        constexpr const list_array<T, Allocator>& for_each_reverse(size_t start_pos, size_t end_pos, FN&& iterate_fn) const&
+            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&>
+        {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
             if (end_pos > _size())
                 throw std::out_of_range("end_pos out of size limit");
-            if constexpr (std::is_invocable_v<_Fn, size_t, T>) {
+            if constexpr (std::is_invocable_v<FN, size_t, const T&>) {
                 size_t pos = end_pos;
                 for (const T& i : reverse_range(start_pos, end_pos))
                     iterate_fn(--pos, i);
@@ -6386,13 +6811,15 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array and applies the given function `iterate_fn` to each element. The function can modify the elements in the array.
          *
-         * @tparam _Fn The type of the function to apply. It must be invocable with either `T&` or `size_t, T&` (index, element).
+         * @tparam FN The type of the function to apply. It must be invocable with either `T&` or `size_t, T&` (index, element).
          * @param iterate_fn The function to apply to each element.
          * @return A reference to this `list_array` after the function has been applied to all elements.
          */
-        template <class _Fn>
-        constexpr list_array<T, Allocator>& forEach(_Fn&& iterate_fn) & {
-            return forEach(0, _size(), std::forward<_Fn>(iterate_fn));
+        template <class FN>
+        constexpr list_array<T, Allocator>& for_each(FN&& iterate_fn) &
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+        {
+            return for_each(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         /**
@@ -6400,14 +6827,16 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array and applies the given function `iterate_fn` to each element. The function can modify the elements in the array.
          *
-         * @tparam _Fn The type of the function to apply. It must be invocable with either `T&` or `size_t, T&` (index, element).
+         * @tparam FN The type of the function to apply. It must be invocable with either `T&` or `size_t, T&` (index, element).
          * @param iterate_fn The function to apply to each element.
          * @return A reference to this `list_array` after the function has been applied to all elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of array.
          */
-        template <class _Fn>
-        constexpr list_array<T, Allocator>& forEach(size_t start_pos, _Fn&& iterate_fn) & {
-            return forEach(start_pos, _size(), std::forward<_Fn>(iterate_fn));
+        template <class FN>
+        constexpr list_array<T, Allocator>& for_each(size_t start_pos, FN&& iterate_fn) &
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+        {
+            return for_each(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         /**
@@ -6415,7 +6844,7 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array, within the range from `start_pos` to `end_pos`, and applies the given function `iterate_fn` to each element. The function can modify the elements in the array.
          *
-         * @tparam _Fn The type of the function to apply.
+         * @tparam FN The type of the function to apply.
          * @param start_pos The starting index of the range to apply the function to (inclusive).
          * @param end_pos The ending index of the range to apply the function to (exclusive).
          * @param iterate_fn The function to apply to each element.
@@ -6423,13 +6852,15 @@ namespace __new_list_array_impl {
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
-        template <class _Fn>
-        constexpr list_array<T, Allocator>& forEach(size_t start_pos, size_t end_pos, _Fn&& iterate_fn) & {
+        template <class FN>
+        constexpr list_array<T, Allocator>& for_each(size_t start_pos, size_t end_pos, FN&& iterate_fn) &
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+        {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
             if (end_pos > _size())
                 throw std::out_of_range("end_pos out of size limit");
-            if constexpr (std::is_invocable_v<_Fn, size_t, T>) {
+            if constexpr (std::is_invocable_v<FN, size_t, T&>) {
                 size_t pos = start_pos;
                 for (T& i : range(start_pos, end_pos))
                     iterate_fn(pos++, i);
@@ -6443,51 +6874,57 @@ namespace __new_list_array_impl {
         /**
          * @brief Applies a function to each element in the array (move version).
          *
-         * This function is similar to the lvalue reference version of `forEach`, but it operates on an rvalue reference (temporary) of the `list_array`. It applies the given function `iterate_fn` to each element and then moves the modified elements into a new `list_array` object.
+         * This function is similar to the lvalue reference version of `for_each`, but it operates on an rvalue reference (temporary) of the `list_array`.
          *
-         * @tparam _Fn The type of the function to apply.
+         * @tparam FN The type of the function to apply.
          * @param iterate_fn The function to apply to each element.
          */
-        template <class _Fn>
-        constexpr void forEach(_Fn&& iterate_fn) && {
-            std::move(*this).forEach(0, _size(), std::forward<_Fn>(iterate_fn));
+        template <class FN>
+        constexpr void for_each(FN&& iterate_fn) &&
+            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&>
+        {
+            std::move(*this).for_each(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         /**
          * @brief Applies a function to each element in the array, starting from a given position (move version).
          *
-         * This function is similar to the lvalue reference version of `forEach(size_t, _Fn&&)`, but it operates on an rvalue reference (temporary) of the `list_array`. It applies the given function `iterate_fn` to each element, starting from the specified `start_pos`, and then moves the modified elements into a new `list_array` object.
+         * This function is similar to the lvalue reference version of `for_each(size_t, FN&&)`, but it operates on an rvalue reference (temporary) of the `list_array`.
          *
-         * @tparam _Fn The type of the function to apply.
+         * @tparam FN The type of the function to apply.
          * @param start_pos The starting index from which to apply the function.
          * @param iterate_fn The function to apply to each element.
          * @throws std::invalid_argument If `start_pos` is greater than size of array.
          */
-        template <class _Fn>
-        constexpr void forEach(size_t start_pos, _Fn&& iterate_fn) && {
-            std::move(*this).forEach(start_pos, _size(), std::forward<_Fn>(iterate_fn));
+        template <class FN>
+        constexpr void for_each(size_t start_pos, FN&& iterate_fn) &&
+            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&>
+        {
+            std::move(*this).for_each(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         /**
          * @brief Applies a function to each element in the array within a specified range (move version).
          *
-         * This function is similar to the lvalue reference version of `forEach(size_t, size_t, _Fn&&)`, but it operates on an rvalue reference (temporary) of the `list_array`. It applies the given function `iterate_fn` to each element within the range from `start_pos` to `end_pos`, and then moves the modified elements into a new `list_array` object.
+         * This function is similar to the lvalue reference version of `for_each(size_t, size_t, FN&&)`, but it operates on an rvalue reference (temporary) of the `list_array`.
          *
-         * @tparam _Fn The type of the function to apply.
+         * @tparam FN The type of the function to apply.
          * @param start_pos The starting index of the range to apply the function to (inclusive).
          * @param end_pos The ending index of the range to apply the function to (exclusive).
          * @param iterate_fn The function to apply to each element.
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
-        template <class _Fn>
-        constexpr void forEach(size_t start_pos, size_t end_pos, _Fn&& iterate_fn) && {
+        template <class FN>
+        constexpr void for_each(size_t start_pos, size_t end_pos, FN&& iterate_fn) &&
+            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&>
+        {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
             if (end_pos > _size())
                 throw std::out_of_range("end_pos out of size limit");
 
-            if constexpr (std::is_invocable_v<_Fn, size_t, T>) {
+            if constexpr (std::is_invocable_v<FN, size_t, T&&>) {
                 size_t pos = start_pos;
                 for (T& i : range(start_pos, end_pos))
                     iterate_fn(pos++, std::move(i));
@@ -6501,13 +6938,15 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array and applies the given function `iterate_fn` to each element. The function cannot modify the elements in the array.
          *
-         * @tparam _Fn The type of the function to apply. It must be invocable with `const T&` or `size_t, const T&` (index, element).
+         * @tparam FN The type of the function to apply. It must be invocable with `const T&` or `size_t, const T&` (index, element).
          * @param iterate_fn The function to apply to each element.
          * @return A reference to this `list_array` after the function has been applied to all elements.
          */
-        template <class _Fn>
-        constexpr const list_array<T, Allocator>& forEach(_Fn&& iterate_fn) const& {
-            return forEach(0, _size(), std::forward<_Fn>(iterate_fn));
+        template <class FN>
+        constexpr const list_array<T, Allocator>& for_each(FN&& iterate_fn) const&
+            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&>
+        {
+            return for_each(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         /**
@@ -6515,15 +6954,17 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array, starting from the specified `start_pos`, and applies the given function `iterate_fn` to each element. The function cannot modify the elements in the array.
          *
-         * @tparam _Fn The type of the function to apply.
+         * @tparam FN The type of the function to apply.
          * @param start_pos The starting index from which to apply the function.
          * @param iterate_fn The function to apply to each element.
          * @return A reference to this `list_array` after the function has been applied to all elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of array.
          */
-        template <class _Fn>
-        constexpr const list_array<T, Allocator>& forEach(size_t start_pos, _Fn&& iterate_fn) const& {
-            return forEach(start_pos, _size(), std::forward<_Fn>(iterate_fn));
+        template <class FN>
+        constexpr const list_array<T, Allocator>& for_each(size_t start_pos, FN&& iterate_fn) const&
+            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&>
+        {
+            return for_each(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         /**
@@ -6531,7 +6972,7 @@ namespace __new_list_array_impl {
          *
          * This function iterates over the elements in the array, within the range from `start_pos` to `end_pos`, and applies the given function `iterate_fn` to each element. The function cannot modify the elements in the array.
          *
-         * @tparam _Fn The type of the function to apply.
+         * @tparam FN The type of the function to apply.
          * @param start_pos The starting index of the range to apply the function to (inclusive).
          * @param end_pos The ending index of the range to apply the function to (exclusive).
          * @param iterate_fn The function to apply to each element.
@@ -6539,13 +6980,15 @@ namespace __new_list_array_impl {
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
-        template <class _Fn>
-        constexpr const list_array<T, Allocator>& forEach(size_t start_pos, size_t end_pos, _Fn&& iterate_fn) const& {
+        template <class FN>
+        constexpr const list_array<T, Allocator>& for_each(size_t start_pos, size_t end_pos, FN&& iterate_fn) const&
+            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&>
+        {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
             if (end_pos > _size())
                 throw std::out_of_range("end_pos out of size limit");
-            if constexpr (std::is_invocable_v<_Fn, size_t, T>) {
+            if constexpr (std::is_invocable_v<FN, size_t, const T&>) {
                 size_t pos = start_pos;
                 for (const T& i : range(start_pos, end_pos))
                     iterate_fn(pos++, i);
@@ -6555,27 +6998,61 @@ namespace __new_list_array_impl {
             return *this;
         }
 
+/// @}
 #pragma endregion
 #pragma region transform
 
-        template <class _Fn>
-        constexpr list_array<T, Allocator> transform(_Fn&& iterate_fn) && {
-            return std::move(*this).transform(0, _size(), std::forward<_Fn>(iterate_fn));
+        /// @name transform
+        /// @{
+
+        /**
+         * @brief Transforms the elements of the `list_array` by applying the `iterate_fn` to each element, returning a new `list_array` with the transformed values.
+         * @tparam FN The type of the function to apply to each element.
+         * @param iterate_fn A callable that takes either `T&` (element reference) or `size_t, T&` (index, element reference) and returns void.
+         * @return A new `list_array` containing the transformed elements.
+         */
+        template <class FN>
+        constexpr list_array<T, Allocator> transform(FN&& iterate_fn) &&
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+        {
+            return std::move(*this).transform(0, _size(), std::forward<FN>(iterate_fn));
         }
 
-        template <class _Fn>
-        constexpr list_array<T, Allocator> transform(size_t start_pos, _Fn&& iterate_fn) && {
-            return std::move(*this).transform(start_pos, _size(), std::forward<_Fn>(iterate_fn));
+        /**
+         * @brief Transforms elements starting from `start_pos` by applying the `iterate_fn` to each element, returning a new `list_array` with the transformed values.
+         * @tparam FN The type of the function to apply to each element.
+         * @param start_pos The index of the first element to transform.
+         * @param iterate_fn A callable that takes either `T&` (element reference) or `size_t, T&` (index, element reference) and returns void.
+         * @return A new `list_array` containing the transformed elements.
+         * @throws std::invalid_argument If `start_pos` is greater than the size of the `list_array`.
+         */
+        template <class FN>
+        constexpr list_array<T, Allocator> transform(size_t start_pos, FN&& iterate_fn) &&
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+        {
+            return std::move(*this).transform(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
-        template <class _Fn>
-        constexpr list_array<T, Allocator> transform(size_t start_pos, size_t end_pos, _Fn&& iterate_fn) && {
+        /**
+         * @brief (rvalue) Transforms elements in the range [`start_pos`, `end_pos`) by applying the `iterate_fn` to each element, returning a new `list_array` with the transformed values.
+         * @tparam FN The type of the function to apply to each element.
+         * @param start_pos The index of the first element to transform.
+         * @param end_pos The index one past the last element to transform.
+         * @param iterate_fn A callable that takes either `T&` (element reference) or `size_t, T&` (index, element reference) and returns void.
+         * @return A new `list_array` containing the transformed elements.
+         * @throws std::invalid_argument If `end_pos` is less than or equal to `start_pos`.
+         * @throws std::out_of_range If `end_pos` is greater than the size of the `list_array`.
+         */
+        template <class FN>
+        constexpr list_array<T, Allocator> transform(size_t start_pos, size_t end_pos, FN&& iterate_fn) &&
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+        {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
             if (end_pos > _size())
                 throw std::out_of_range("end_pos out of size limit");
 
-            if constexpr (std::is_invocable_v<_Fn, size_t, T>) {
+            if constexpr (std::is_invocable_v<FN, size_t, T&>) {
                 size_t pos = start_pos;
                 for (T& i : range(start_pos, end_pos))
                     iterate_fn(pos++, i);
@@ -6585,22 +7062,60 @@ namespace __new_list_array_impl {
             return take(start_pos, end_pos);
         }
 
-        template <class _Fn>
-        constexpr const list_array<T, Allocator>& transform(_Fn&& iterate_fn) & {
-            return forEach(0, _size(), std::forward<_Fn>(iterate_fn));
+        /**
+         * @brief Transforms the elements of the `list_array` in place by applying the `iterate_fn` to each element.
+         * @tparam FN The type of the function to apply to each element.
+         * @param iterate_fn A callable that takes either `T&` (element reference) or `size_t, T&` (index, element reference) and returns void.
+         * @return A const reference to the modified `list_array`.
+         * @note This function modifies the `list_array` in place and returns a reference to itself.
+         */
+        template <class FN>
+        constexpr list_array<T, Allocator>& transform(FN&& iterate_fn) &
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+        {
+            return for_each(0, _size(), std::forward<FN>(iterate_fn));
         }
 
-        template <class _Fn>
-        constexpr const list_array<T, Allocator>& transform(size_t start_pos, _Fn&& iterate_fn) & {
-            return forEach(start_pos, _size(), std::forward<_Fn>(iterate_fn));
+        /**
+         * @brief Transforms elements starting from `start_pos` in place by applying the `iterate_fn` to each element.
+         * @tparam FN The type of the function to apply to each element.
+         * @param start_pos The index of the first element to transform.
+         * @param iterate_fn A callable that takes either `T&` (element reference) or `size_t, T&` (index, element reference) and returns void.
+         * @return A const reference to the modified `list_array`.
+         * @note This function modifies the `list_array` in place and returns a reference to itself.
+         * @throws std::invalid_argument If `start_pos` is greater than the size of the `list_array`.
+         */
+        template <class FN>
+        constexpr list_array<T, Allocator>& transform(size_t start_pos, FN&& iterate_fn) &
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+        {
+            return for_each(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
-        template <class _Fn>
-        constexpr const list_array<T, Allocator>& transform(size_t start_pos, size_t end_pos, _Fn&& iterate_fn) & {
-            return forEach(start_pos, end_pos, std::forward<_Fn>(iterate_fn));
+        /**
+         * @brief Transforms elements in the range [`start_pos`, `end_pos`) in place by applying the `iterate_fn` to each element.
+         * @tparam FN The type of the function to apply to each element.
+         * @param start_pos The index of the first element to transform.
+         * @param end_pos The index one past the last element to transform.
+         * @param iterate_fn A callable that takes either `T&` (element reference) or `size_t, T&` (index, element reference) and returns void.
+         * @return A const reference to the modified `list_array`.
+         * @note This function modifies the `list_array` in place and returns a reference to itself.
+         * @throws std::invalid_argument If `end_pos` is less than or equal to `start_pos`.
+         * @throws std::out_of_range If `end_pos` is greater than the size of the `list_array`.
+         */
+        template <class FN>
+        constexpr list_array<T, Allocator>& transform(size_t start_pos, size_t end_pos, FN&& iterate_fn) &
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+        {
+            return for_each(start_pos, end_pos, std::forward<FN>(iterate_fn));
         }
 
+/// @}
+#pragma endregion
 #pragma region convert
+
+        /// @name convert
+        /// @{
 
         /**
          * @brief Converts elements in the array to a different type.
@@ -6609,13 +7124,15 @@ namespace __new_list_array_impl {
          *
          * @tparam ConvertTo The type to convert the elements to.
          * @tparam result_array The type of the array to store the converted elements (defaults to `list_array<ConvertTo, std::allocator<ConvertTo>>`).
-         * @tparam _Fn The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
+         * @tparam FN The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class _Fn>
-        constexpr [[nodiscard]] result_array convert(_Fn&& iterate_fn) const& {
-            return convert<ConvertTo>(0, _size(), std::forward<_Fn>(iterate_fn));
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+        constexpr [[nodiscard]] result_array convert(FN&& iterate_fn) const&
+            requires std::is_invocable_r_v<ConvertTo, FN, const T&> || std::is_invocable_r_v<ConvertTo, FN, size_t, const T&>
+        {
+            return convert<ConvertTo>(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         /**
@@ -6625,14 +7142,16 @@ namespace __new_list_array_impl {
          *
          * @tparam ConvertTo The type to convert the elements to.
          * @tparam result_array The type of the array to store the converted elements (defaults to `list_array<ConvertTo, std::allocator<ConvertTo>>`).
-         * @tparam _Fn The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
+         * @tparam FN The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
          * @param start_pos The starting index of the range to convert (inclusive).
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class _Fn>
-        constexpr [[nodiscard]] result_array convert(size_t start_pos, _Fn&& iterate_fn) const& {
-            return convert<ConvertTo>(start_pos, _size(), std::forward<_Fn>(iterate_fn));
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+        constexpr [[nodiscard]] result_array convert(size_t start_pos, FN&& iterate_fn) const&
+            requires std::is_invocable_r_v<ConvertTo, FN, const T&> || std::is_invocable_r_v<ConvertTo, FN, size_t, const T&>
+        {
+            return convert<ConvertTo>(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         /**
@@ -6642,20 +7161,22 @@ namespace __new_list_array_impl {
          *
          * @tparam ConvertTo The type to convert the elements to.
          * @tparam result_array The type of the array to store the converted elements (defaults to `list_array<ConvertTo, std::allocator<ConvertTo>>`).
-         * @tparam _Fn The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
+         * @tparam FN The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
          * @param start_pos The starting index of the range to convert (inclusive).
          * @param end_pos The ending index of the range to convert (exclusive).
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class _Fn>
-        constexpr [[nodiscard]] result_array convert(size_t start_pos, size_t end_pos, _Fn&& iterate_fn) const& {
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+        constexpr [[nodiscard]] result_array convert(size_t start_pos, size_t end_pos, FN&& iterate_fn) const&
+            requires std::is_invocable_r_v<ConvertTo, FN, const T&> || std::is_invocable_r_v<ConvertTo, FN, size_t, const T&>
+        {
             result_array res;
             if (end_pos > _size())
                 throw std::out_of_range("end_pos out of size limit");
             res.reserve_back(end_pos - start_pos);
-            if constexpr (std::is_invocable_v<_Fn, size_t, T>) {
+            if constexpr (std::is_invocable_r_v<ConvertTo, FN, size_t, const T&>) {
                 size_t pos = start_pos;
                 for (auto& i : range(start_pos, end_pos))
                     res.push_back(iterate_fn(pos++, i));
@@ -6672,13 +7193,15 @@ namespace __new_list_array_impl {
          *
          * @tparam ConvertTo The type to convert the elements to.
          * @tparam result_array The type of the array to store the converted elements (defaults to `list_array<ConvertTo, std::allocator<ConvertTo>>`).
-         * @tparam _Fn The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
+         * @tparam FN The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
          * @param start_pos The starting index of the range to convert (inclusive).
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class _Fn>
-        constexpr [[nodiscard]] result_array convert(_Fn&& iterate_fn) && {
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+        constexpr [[nodiscard]] result_array convert(FN&& iterate_fn) &&
+            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
+        {
             return convert_take<ConvertTo, result_array>(0, _size(), iterate_fn);
         }
 
@@ -6689,12 +7212,14 @@ namespace __new_list_array_impl {
          *
          * @tparam ConvertTo The type to convert the elements to.
          * @tparam result_array The type of the array to store the converted elements (defaults to `list_array<ConvertTo, std::allocator<ConvertTo>>`).
-         * @tparam _Fn The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
+         * @tparam FN The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class _Fn>
-        constexpr [[nodiscard]] result_array convert(size_t start_pos, _Fn&& iterate_fn) && {
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+        constexpr [[nodiscard]] result_array convert(size_t start_pos, FN&& iterate_fn) &&
+            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
+        {
             return convert_take<ConvertTo, result_array>(start_pos, _size(), iterate_fn);
         }
 
@@ -6705,14 +7230,16 @@ namespace __new_list_array_impl {
          *
          * @tparam ConvertTo The type to convert the elements to.
          * @tparam result_array The type of the array to store the converted elements (defaults to `list_array<ConvertTo, std::allocator<ConvertTo>>`).
-         * @tparam _Fn The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
+         * @tparam FN The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
          * @param start_pos The starting index of the range to convert (inclusive).
          * @param end_pos The ending index of the range to convert (exclusive).
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class _Fn>
-        constexpr [[nodiscard]] result_array convert(size_t start_pos, size_t end_pos, _Fn&& iterate_fn) && {
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+        constexpr [[nodiscard]] result_array convert(size_t start_pos, size_t end_pos, FN&& iterate_fn) &&
+            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
+        {
             return convert_take<ConvertTo, result_array>(start_pos, end_pos, iterate_fn);
         }
 
@@ -6723,12 +7250,14 @@ namespace __new_list_array_impl {
          *
          * @tparam ConvertTo The type to convert the elements to.
          * @tparam result_array The type of the array to store the converted elements (defaults to `list_array<ConvertTo, std::allocator<ConvertTo>>`).
-         * @tparam _Fn The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
+         * @tparam FN The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class _Fn>
-        constexpr [[nodiscard]] result_array convert_take(_Fn&& iterate_fn) {
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+        constexpr [[nodiscard]] result_array convert_take(FN&& iterate_fn)
+            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
+        {
             return convert_take<ConvertTo, result_array>(0, _size(), iterate_fn);
         }
 
@@ -6739,13 +7268,15 @@ namespace __new_list_array_impl {
          *
          * @tparam ConvertTo The type to convert the elements to.
          * @tparam result_array The type of the array to store the converted elements (defaults to `list_array<ConvertTo, std::allocator<ConvertTo>>`).
-         * @tparam _Fn The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
+         * @tparam FN The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
          * @param start_pos The starting index of the range to convert (inclusive).
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class _Fn>
-        constexpr [[nodiscard]] result_array convert_take(size_t start_pos, _Fn&& iterate_fn) {
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+        constexpr [[nodiscard]] result_array convert_take(size_t start_pos, FN&& iterate_fn)
+            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
+        {
             return convert_take<ConvertTo, result_array>(start_pos, _size(), iterate_fn);
         }
 
@@ -6756,18 +7287,20 @@ namespace __new_list_array_impl {
          *
          * @tparam ConvertTo The type to convert the elements to.
          * @tparam result_array The type of the array to store the converted elements (defaults to `list_array<ConvertTo, std::allocator<ConvertTo>>`).
-         * @tparam _Fn The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
+         * @tparam FN The type of the conversion function. It must be invocable with either `const T&` or `size_t, const T&` (index, element).
          * @param start_pos The starting index of the range to convert (inclusive).
          * @param end_pos The ending index of the range to convert (exclusive).
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class _Fn>
-        constexpr [[nodiscard]] result_array convert_take(size_t start_pos, size_t end_pos, _Fn&& iterate_fn) {
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+        constexpr [[nodiscard]] result_array convert_take(size_t start_pos, size_t end_pos, FN&& iterate_fn)
+            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
+        {
             list_array<T, Allocator> tmp = take(start_pos, end_pos);
             result_array res;
             res.reserve(tmp.size());
-            if constexpr (std::is_invocable_v<_Fn, size_t, T>) {
+            if constexpr (std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>) {
                 size_t pos = start_pos;
                 for (auto& i : tmp.range(start_pos, end_pos))
                     res.push_back(pos++, iterate_fn(std::move(i)));
@@ -6777,29 +7310,28 @@ namespace __new_list_array_impl {
             return res;
         }
 
+/// @}
 #pragma endregion
 #pragma region erase
 
+        /// @name erase
+        /// @{
         /**
          * @brief Removes an element at the specified index.
          *
          * This function erases the element at the given `where` index from the array. If the index is 0, the element is removed from the beginning (equivalent to `pop_front`). If the index is the last element, it is removed from the end (equivalent to `pop_back`).
          *
          * @param where The index of the element to erase.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void erase(size_t where) & {
+        constexpr list_array<T, Allocator>& erase(size_t where) & {
             if (where == 0)
                 pop_front();
             else if (where == _size() - 1)
                 pop_back();
-            else {
-                auto iter = get_iterator(where);
-                auto end = get_iterator(where + 1);
-                if (split_policy(iter.block->data_size))
-                    erase_range(iter, end);
-                else
-                    erase_range(iter, end);
-            }
+            else
+                erase_range(get_iterator(where), get_iterator(where + 1));
+            return *this;
         }
 
         /**
@@ -6809,9 +7341,11 @@ namespace __new_list_array_impl {
          *
          * @param begin The starting index of the range to erase (inclusive).
          * @param end The ending index of the range to erase (exclusive).
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void erase(size_t begin, size_t end) & {
+        constexpr list_array<T, Allocator>& erase(size_t begin, size_t end) & {
             erase_range(get_iterator(begin), get_iterator(end));
+            return *this;
         }
 
         /**
@@ -6841,9 +7375,12 @@ namespace __new_list_array_impl {
             return std::move(*this);
         }
 
+/// @}
 #pragma endregion
 #pragma region starts/ends with
 
+        /// @name starts/ends with
+        /// @{
         /**
          * @brief Checks if the array starts with a specific value.
          *
@@ -6852,7 +7389,6 @@ namespace __new_list_array_impl {
          * @param condition The value to check for at the beginning.
          * @param start_pos The starting index to check from (defaults to 0).
          * @return `true` if the array starts with the `condition` value at `start_pos`, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <size_t condition_size>
         constexpr [[nodiscard]] bool starts_with(const T (&condition)[condition_size], size_t start_pos = 0) const&
@@ -6870,7 +7406,6 @@ namespace __new_list_array_impl {
          * @param condition The C-style array to check for at the beginning.
          * @param start_pos The starting index to check from (defaults to 0).
          * @return `true` if the array starts with the `condition` array at `start_pos`, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] bool starts_with(const T* condition, size_t condition_size, size_t start_pos = 0) const&
             requires std::equality_comparable<T>
@@ -6894,7 +7429,6 @@ namespace __new_list_array_impl {
          * @param condition_size The size of the raw array `condition`.
          * @param start_pos The starting index to check from (defaults to 0).
          * @return `true` if the array starts with the `condition` array at `start_pos`, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] bool starts_with(const T& condition, size_t start_pos = 0) const&
             requires std::equality_comparable<T>
@@ -6913,7 +7447,6 @@ namespace __new_list_array_impl {
          * @param condition The `list_array` to check for at the beginning.
          * @param start_pos The starting index to check from (defaults to 0).
          * @return `true` if the array starts with the `condition` list_array at `start_pos`, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <class AnyAllocator>
         constexpr [[nodiscard]] bool starts_with(const list_array<T, AnyAllocator>& condition, size_t start_pos = 0) const&
@@ -6937,7 +7470,6 @@ namespace __new_list_array_impl {
          * @tparam condition_size The size of the C-style array `condition`.
          * @param condition The C-style array to check for at the end.
          * @return `true` if the array ends with the `condition` array, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <size_t condition_size>
         constexpr [[nodiscard]] bool ends_with(const T (&condition)[condition_size]) const&
@@ -6955,7 +7487,6 @@ namespace __new_list_array_impl {
          * @param condition The C-style array to check for at the end.
          * @param end_pos The ending index to check up to (defaults to the size of the array).
          * @return `true` if the array ends with the `condition` array within the specified range, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <size_t condition_size>
         constexpr [[nodiscard]] bool ends_with(const T (&condition)[condition_size], size_t end_pos) const&
@@ -6972,7 +7503,6 @@ namespace __new_list_array_impl {
          * @param condition A pointer to the beginning of the raw array to check for.
          * @param condition_size The size of the raw array `condition`.
          * @return `true` if the array ends with the `condition` array, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] bool ends_with(const T* condition, size_t condition_size) const&
             requires std::equality_comparable<T>
@@ -6989,7 +7519,6 @@ namespace __new_list_array_impl {
          * @param condition_size The size of the raw array `condition`.
          * @param end_pos The ending index to check up to (defaults to the size of the array).
          * @return `true` if the array ends with the `condition` array within the specified range, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] bool ends_with(const T* condition, size_t condition_size, size_t end_pos) const&
             requires std::equality_comparable<T>
@@ -7011,7 +7540,6 @@ namespace __new_list_array_impl {
          *
          * @param condition The value to check for at the end.
          * @return `true` if the array ends with the `condition` value, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] bool ends_with(const T& condition) const&
             requires std::equality_comparable<T>
@@ -7027,7 +7555,6 @@ namespace __new_list_array_impl {
          * @param condition The value to check for at the end.
          * @param end_pos The ending index to check up to (defaults to the size of the array).
          * @return `true` if the array ends with the `condition` value within the specified range, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         constexpr [[nodiscard]] bool ends_with(const T& condition, size_t end_pos) const&
             requires std::equality_comparable<T>
@@ -7045,7 +7572,6 @@ namespace __new_list_array_impl {
          * @tparam AnyAllocator The allocator type of the `list_array` `condition`.
          * @param condition The `list_array` to check for at the end.
          * @return `true` if the array ends with the `condition` list_array, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <class AnyAllocator>
         constexpr [[nodiscard]] bool ends_with(const list_array<T, AnyAllocator>& condition) const&
@@ -7063,7 +7589,6 @@ namespace __new_list_array_impl {
          * @param condition The `list_array` to check for at the end.
          * @param end_pos The ending index to check up to (defaults to the size of the array).
          * @return `true` if the array ends with the `condition` list_array within the specified range, `false` otherwise.
-         * @tparam Requires the element type (`T`) to be equality comparable.
          */
         template <class AnyAllocator>
         constexpr [[nodiscard]] bool ends_with(const list_array<T, AnyAllocator>& condition, size_t end_pos) const&
@@ -7079,9 +7604,570 @@ namespace __new_list_array_impl {
             return true;
         }
 
+/// @}
+#pragma endregion
+#pragma region replace
+
+        /// @name replace
+        /// @{
+
+        /**
+         * @brief Replaces all occurrences of `target` with `with`.
+         * @param target The value to be replaced.
+         * @param with The new value to insert.
+         * @return A reference to the modified `list_array`.
+         */
+        constexpr list_array<T, Allocator>& replace(const T& target, const T& with) &
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            return for_each([target, with](T& it) {
+                if (it == target)
+                    it = with;
+            });
+        }
+
+        /**
+         * @brief Replaces all occurrences of `target` with `with`, returning a new `list_array`.
+         * @param target The value to be replaced.
+         * @param with The new value to insert.
+         * @return A new `list_array` with the replacements made.
+         */
+        constexpr list_array<T, Allocator> replace(const T& target, const T& with) &&
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            return replace(target, with).take();
+        }
+
+        /**
+         * @brief Replaces all occurrences of `target` with elements from the C array `with`.
+         * @param target The value to be replaced.
+         * @param with A pointer to the first element of the replacement C array.
+         * @param with_size The number of elements in the replacement C array.
+         * @return A reference to the modified `list_array`.
+         */
+        constexpr list_array<T, Allocator>& replace(const T& target, const T* with, size_t with_size) &
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            auto cache_iter = end();
+            for (ptrdiff_t i = size(); i > 0;) {
+                --cache_iter;
+                --i;
+                if (*cache_iter == target) {
+                    erase(i);
+                    insert(i, with, with_size);
+                    cache_iter = get_iterator(i);
+                }
+            }
+            return *this;
+        }
+
+        /**
+         * @brief Replaces all occurrences of `target` with elements from the C array `with`, returning a new `list_array`.
+         * @param target The value to be replaced.
+         * @param with A pointer to the first element of the replacement C array.
+         * @param with_size The number of elements in the replacement C array.
+         * @return A new `list_array` with the replacements made.
+         */
+        constexpr [[nodiscard]] list_array<T, Allocator> replace(const T& target, const T* with, size_t with_size) &&
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            return replace(target, with, with_size).take();
+        }
+
+        /**
+         * @brief Replaces all occurrences of the sequence defined by `target` (C array) with `with`.
+         * @param target A pointer to the first element of the sequence to be replaced.
+         * @param target_size The number of elements in the sequence to be replaced.
+         * @param with The new value to insert.
+         * @return A reference to the modified `list_array`.
+         */
+        constexpr list_array<T, Allocator>& replace(const T* target, size_t target_size, const T& with) &
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            auto cache_iter = end();
+            size_t t = 0;
+            for (ptrdiff_t i = size(); i > 0;) {
+                --cache_iter;
+                --i;
+                if (*cache_iter != target[t])
+                    t = 0;
+                else if (t == target_size) {
+                    erase(i, target_size);
+                    insert(i, with);
+                    cache_iter = get_iterator(i);
+                }
+            }
+            return *this;
+        }
+
+        /**
+         * @brief Replaces all occurrences of the sequence defined by `target` (C array) with `with`, returning a new `list_array`.
+         * @param target A pointer to the first element of the sequence to be replaced.
+         * @param target_size The number of elements in the sequence to be replaced.
+         * @param with The new value to insert.
+         * @return A new `list_array` with the replacements made.
+         */
+        constexpr [[nodiscard]] list_array<T, Allocator> replace(const T* target, size_t target_size, const T& with) &&
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            return replace(target, target_size, with).take();
+        }
+
+        /**
+         * @brief Replaces all occurrences of the sequence defined by `target` (C array) with elements from the C array `with`.
+         * @param target A pointer to the first element of the sequence to be replaced.
+         * @param target_size The number of elements in the sequence to be replaced.
+         * @param with A pointer to the first element of the replacement C array.
+         * @param with_size The number of elements in the replacement C array.
+         * @return A reference to the modified `list_array`.
+         */
+        constexpr list_array<T, Allocator>& replace(const T* target, size_t target_size, const T* with, size_t with_size) &
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            auto cache_iter = end();
+            size_t t = 0;
+            for (ptrdiff_t i = size(); i > 0;) {
+                --cache_iter;
+                --i;
+                if (*cache_iter != target[t])
+                    t = 0;
+                else if (t == target_size) {
+                    erase(i, target_size);
+                    insert(i, with, with_size);
+                    cache_iter = get_iterator(i);
+                }
+            }
+            return *this;
+        }
+
+        /**
+         * @brief Replaces all occurrences of the sequence defined by `target` (C array) with elements from the C array `with`, returning a new `list_array`.
+         * @param target A pointer to the first element of the sequence to be replaced.
+         * @param target_size The number of elements in the sequence to be replaced.
+         * @param with A pointer to the first element of the replacement C array.
+         * @param with_size The number of elements in the replacement C array.
+         * @return A new `list_array` with the replacements made.
+         */
+        constexpr [[nodiscard]] list_array<T, Allocator> replace(const T* target, size_t target_size, const T* with, size_t with_size) &&
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            return replace(target, target_size, with, with_size).take();
+        }
+
+        /**
+         * @brief Replaces all occurrences of `target` with elements from the `list_array` `with`.
+         * @tparam AnyAllocator The allocator type of the `list_array` containing the replacement elements.
+         * @param target The value to be replaced.
+         * @param with The `list_array` containing the replacement elements.
+         * @return A reference to the modified `list_array`.
+         */
+        template <class AnyAllocator>
+        constexpr list_array<T, Allocator>& replace(const T& target, const list_array<T, AnyAllocator>& with) &
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            auto cache_iter = end();
+            for (ptrdiff_t i = size(); i > 0;) {
+                --cache_iter;
+                --i;
+                if (*cache_iter == target) {
+                    erase(i);
+                    insert(i, with);
+                    cache_iter = get_iterator(i);
+                }
+            }
+            return *this;
+        }
+
+        /**
+         * @brief Replaces all occurrences of `target` with elements from the `list_array` `with`, returning a new `list_array`.
+         * @tparam AnyAllocator The allocator type of the `list_array` containing the replacement elements.
+         * @param target The value to be replaced.
+         * @param with The `list_array` containing the replacement elements.
+         * @return A new `list_array` with the replacements made.
+         */
+        template <class AnyAllocator>
+        constexpr [[nodiscard]] list_array<T, Allocator> replace(const T& target, const list_array<T, AnyAllocator>& with) &&
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            return replace(target, with).take();
+        }
+
+        /**
+         * @brief (lvalue) Replaces all occurrences of the sequence defined by `target` (`list_array`) with `with`.
+         * @tparam AnyAllocator The allocator type of the `list_array` containing the sequence to be replaced.
+         * @param target The `list_array` containing the sequence to be replaced.
+         * @param with The new value to insert.
+         * @return A reference to the modified `list_array`.
+         */
+        template <class AnyAllocator>
+        constexpr list_array<T, Allocator>& replace(const list_array<T, AnyAllocator>& target, const T& with) &
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            auto cache_iter = end();
+            size_t t = 0, target_size = target.size();
+
+            for (ptrdiff_t i = size(); i > 0;) {
+                --cache_iter;
+                --i;
+                if (*cache_iter != target[t])
+                    t = 0;
+                else if (t == target_size) {
+                    erase(i, target_size);
+                    insert(i, with);
+                    cache_iter = get_iterator(i);
+                }
+            }
+            return *this;
+        }
+
+        /**
+         * @brief Replaces all occurrences of the sequence defined by `target` (`list_array`) with `with`, returning a new `list_array`.
+         * @tparam AnyAllocator The allocator type of the `list_array` containing the sequence to be replaced.
+         * @param target The `list_array` containing the sequence to be replaced.
+         * @param with The new value to insert.
+         * @return A new `list_array` with the replacements made.
+         */
+        template <class AnyAllocator>
+        constexpr [[nodiscard]] list_array<T, Allocator> replace(const list_array<T, AnyAllocator>& target, const T& with) &&
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            return replace(target, with).take();
+        }
+
+        /**
+         * @brief Replaces all occurrences of the sequence defined by `target` (`list_array`) with elements from the `list_array` `with`.
+         * @tparam AnyAllocator0 The allocator type of the `list_array` containing the sequence to be replaced.
+         * @tparam AnyAllocator1 The allocator type of the `list_array` containing the replacement elements.
+         * @param target The `list_array` containing the sequence to be replaced.
+         * @param with The `list_array` containing the replacement elements.
+         * @return A reference to the modified `list_array`.
+         */
+        template <class AnyAllocator0, class AnyAllocator1>
+        constexpr list_array<T, Allocator>& replace(const list_array<T, AnyAllocator0>& target, const list_array<T, AnyAllocator1>& with) &
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            auto cache_iter = end();
+            size_t t = 0, target_size = target.size();
+            for (ptrdiff_t i = size(); i > 0;) {
+                --cache_iter;
+                --i;
+                if (*cache_iter != target[t])
+                    t = 0;
+                else if (t == target_size) {
+                    erase(i, target_size);
+                    insert(i, with);
+                    cache_iter = get_iterator(i);
+                }
+            }
+            return *this;
+        }
+
+        /**
+         * @brief Replaces all occurrences of the sequence defined by `target` (`list_array`) with elements from the `list_array` `with`, returning a new `list_array`.
+         * @tparam AnyAllocator0 The allocator type of the `list_array` containing the sequence to be replaced.
+         * @tparam AnyAllocator1 The allocator type of the `list_array` containing the replacement elements.
+         * @param target The `list_array` containing the sequence to be replaced.
+         * @param with The `list_array` containing the replacement elements.
+         * @return A new `list_array` with the replacements made.
+         */
+        template <class AnyAllocator0, class AnyAllocator1>
+        constexpr [[nodiscard]] list_array<T, Allocator> replace(const list_array<T, AnyAllocator0>& target, const list_array<T, AnyAllocator1>& with) &&
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            return replace(target, with).take();
+        }
+
+        /**
+         * @brief Replaces all occurrences of `target` with elements from the C array `with`.
+         *        The size of the C array is automatically deduced.
+         * @tparam with_size The size of the C array `with` (deduced automatically).
+         * @param target The value to be replaced.
+         * @param with A C array containing the replacement elements.
+         * @return A reference to the modified `list_array`.
+         */
+        template <size_t with_size>
+        constexpr list_array<T, Allocator>& replace(const T& target, const T (&with)[with_size]) &
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            return replace(target, with, with_size);
+        }
+
+        /**
+         * @brief Replaces all occurrences of `target` with elements from the C array `with`, returning a new `list_array`.
+         *        The size of the C array is automatically deduced.
+         * @tparam with_size The size of the C array `with` (deduced automatically).
+         * @param target The value to be replaced.
+         * @param with A C array containing the replacement elements.
+         * @return A new `list_array` with the replacements made.
+         */
+        template <size_t with_size>
+        constexpr [[nodiscard]] list_array<T, Allocator> replace(const T& target, const T (&with)[with_size]) &&
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            return replace(target, with, with_size).take();
+        }
+
+        /**
+         * @brief Replaces all occurrences of the sequence defined by `target` (C array) with `with`.
+         *        The size of the `target` C array is automatically deduced.
+         * @tparam target_size The size of the C array `target` (deduced automatically).
+         * @param target A C array containing the sequence to be replaced.
+         * @param with The new value to insert.
+         * @return A reference to the modified `list_array`.
+         */
+        template <size_t target_size>
+        constexpr list_array<T, Allocator>& replace(const T (&target)[target_size], const T& with) &
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            return replace(target, target_size, with);
+        }
+
+        /**
+         * @brief Replaces all occurrences of the sequence defined by `target` (C array) with `with`, returning a new `list_array`.
+         *        The size of the `target` C array is automatically deduced.
+         * @tparam T The element type stored in the `list_array`.
+         * @tparam target_size The size of the C array `target` (deduced automatically).
+         * @param target A C array containing the sequence to be replaced.
+         * @param with The new value to insert.
+         * @return A new `list_array` with the replacements made.
+         */
+        template <size_t target_size>
+        constexpr [[nodiscard]] list_array<T, Allocator> replace(const T (&target)[target_size], const T& with) &&
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            return replace(target, target_size, with).take();
+        }
+
+        /**
+         * @brief Replaces all occurrences of the sequence defined by `target` (C array) with elements from the C array `with`.
+         *        The sizes of both C arrays are automatically deduced.
+         * @tparam target_size The size of the C array `target` (deduced automatically).
+         * @tparam with_size The size of the C array `with` (deduced automatically).
+         * @param target A C array containing the sequence to be replaced.
+         * @param with A C array containing the replacement elements.
+         * @return A reference to the modified `list_array`.
+         */
+        template <size_t target_size, size_t with_size>
+        constexpr list_array<T, Allocator>& replace(const T (&target)[target_size], const T (&with)[with_size]) &
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            return replace(target, target_size, with, with_size);
+        }
+
+        /**
+         * @brief Replaces all occurrences of the sequence defined by `target` (C array) with elements from the C array `with`, returning a new `list_array`.
+         *        The sizes of both C arrays are automatically deduced.
+         * @tparam target_size The size of the C array `target` (deduced automatically).
+         * @tparam with_size The size of the C array `with` (deduced automatically).
+         * @param target A C array containing the sequence to be replaced.
+         * @param with A C array containing the replacement elements.
+         * @return A new `list_array` with the replacements made.
+         */
+        template <size_t target_size, size_t with_size>
+        constexpr [[nodiscard]] list_array<T, Allocator> replace(const T (&target)[target_size], const T (&with)[with_size]) &&
+            requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
+        {
+            return replace(target, target_size, with, with_size).take();
+        }
+
+        /**
+        * @brief Replaces elements with `with` if the `selector` function returns `true`.
+        * @tparam FN The type of the selector function.
+        * @param with The new value to insert.
+        * @param selector A callable that takes either `T&` (element reference) or `size_t, T&` (index, element reference) and returns `bool`.
+        * @return A reference to the modified `list_array`.
+                *
+        * The `selector` can optionally take the element's index as its first argument.
+        * If the `selector` accepts the index, it will be provided during the replacement process.
+        */
+        template <class FN>
+        constexpr list_array<T, Allocator>& replace_if(const T& with, FN&& selector) &
+            requires std::is_copy_constructible_v<T> && (std::is_invocable_r_v<bool, FN, T&> || std::is_invocable_r_v<bool, FN, size_t, T&>)
+        {
+            if constexpr (std::is_invocable_r_v<bool, FN, size_t, T&>)
+                return for_each([&selector, &with](size_t i, T& it) {
+                    if (selector(i, it))
+                        it = with;
+                });
+            else
+                return for_each([&selector, &with](T& it) {
+                    if (selector(it))
+                        it = with;
+                });
+        }
+
+        /**
+        * @brief Replaces elements with `with` if the `selector` function returns `true`,
+        *        returning a new `list_array`.
+        * @tparam FN The type of the selector function.
+        * @param with The new value to insert.
+        * @param selector A callable that takes either `T&` (element reference) or `size_t, T&` (index, element reference) and returns `bool`.
+        * @return A new `list_array` with the replacements made.
+                *
+        * The `selector` can optionally take the element's index as its first argument.
+        * If the `selector` accepts the index, it will be provided during the replacement process.
+        */
+        template <class FN>
+        constexpr list_array<T, Allocator> replace_if(const T& with, FN&& selector) &&
+            requires std::is_copy_constructible_v<T> && (std::is_invocable_r_v<bool, FN, T&> || std::is_invocable_r_v<bool, FN, size_t, T&>)
+        {
+            return replace_if(with, std::forward<FN>(selector)).take();
+        }
+
+        /**
+        * @brief Replaces elements with elements from the C array `with` if the `selector` function returns `true`.
+        * @tparam FN The type of the selector function.
+        * @param with A pointer to the first element of the replacement C array.
+        * @param with_size The number of elements in the replacement C array.
+        * @param selector A callable that takes either `T&` (element reference) or `size_t, T&` (index, element reference) and returns `bool`.
+        * @return A reference to the modified `list_array`.
+                *
+        * The `selector` can optionally take the element's index as its first argument.
+        * If the `selector` accepts the index, it will be provided during the replacement process.
+        */
+        template <class FN>
+        constexpr list_array<T, Allocator>& replace_if(const T* with, size_t with_size, FN&& selector) &
+            requires std::is_copy_constructible_v<T> && (std::is_invocable_r_v<bool, FN, T&> || std::is_invocable_r_v<bool, FN, size_t, T&>)
+        {
+            auto cache_iter = end();
+            for (ptrdiff_t i = size(); i > 0;) {
+                --cache_iter;
+                --i;
+                if constexpr (std::is_invocable_r_v<bool, FN, size_t, T&>) {
+                    if (selector(cache_iter.absolute_index, *cache_iter)) {
+                        erase(i);
+                        insert(i, with, with_size);
+                        cache_iter = get_iterator(i);
+                    }
+                } else {
+                    if (selector(*cache_iter)) {
+                        erase(i);
+                        insert(i, with, with_size);
+                        cache_iter = get_iterator(i);
+                    }
+                }
+            }
+            return *this;
+        }
+
+        /**
+        * @brief Replaces elements with elements from the C array `with` if the `selector` function returns `true`,
+        *        returning a new `list_array`.
+        * @tparam FN The type of the selector function.
+        * @param with A pointer to the first element of the replacement C array.
+        * @param with_size The number of elements in the replacement C array.
+        * @param selector A callable that takes either `T&` (element reference) or `size_t, T&` (index, element reference) and returns `bool`.
+        * @return A new `list_array` with the replacements made.
+                *
+        * The `selector` can optionally take the element's index as its first argument.
+        * If the `selector` accepts the index, it will be provided during the replacement process.
+        */
+        template <class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> replace_if(const T* with, size_t with_size, FN&& selector) &&
+            requires std::is_copy_constructible_v<T> && (std::is_invocable_r_v<bool, FN, T&> || std::is_invocable_r_v<bool, FN, size_t, T&>)
+        {
+            return replace_if(with, with_size, std::forward<FN>(selector)).take();
+        }
+
+        /**
+        * @brief Replaces elements with elements from the `list_array` `with` if the `selector` function returns `true`.
+        * @tparam AnyAllocator The allocator type of the `list_array` containing the replacement elements.
+        * @tparam FN The type of the selector function.
+        * @param with The `list_array` containing the replacement elements.
+        * @param selector A callable that takes either `T&` (element reference) or `size_t, T&` (index, element reference) and returns `bool`.
+        * @return A reference to the modified `list_array`.
+                *
+        * The `selector` can optionally take the element's index as its first argument.
+        * If the `selector` accepts the index, it will be provided during the replacement process.
+        */
+        template <class AnyAllocator, class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> replace_if(const list_array<T, AnyAllocator>& with, FN&& selector) &
+            requires std::is_copy_constructible_v<T> && (std::is_invocable_r_v<bool, FN, T&> || std::is_invocable_r_v<bool, FN, size_t, T&>)
+        {
+            auto cache_iter = end();
+            for (ptrdiff_t i = size(); i > 0;) {
+                --cache_iter;
+                --i;
+                if constexpr (std::is_invocable_r_v<bool, FN, size_t, T&>) {
+                    if (selector(cache_iter.absolute_index, *cache_iter)) {
+                        erase(i);
+                        insert(i, with);
+                        cache_iter = get_iterator(i);
+                    }
+                } else {
+                    if (selector(*cache_iter)) {
+                        erase(i);
+                        insert(i, with);
+                        cache_iter = get_iterator(i);
+                    }
+                }
+            }
+            return *this;
+        }
+
+        /**
+        * @brief Replaces elements with elements from the `list_array` `with` if the `selector` function returns `true`,
+        *        returning a new `list_array`.
+        * @tparam AnyAllocator The allocator type of the `list_array` containing the replacement elements.
+        * @tparam FN The type of the selector function.
+        * @param with The `list_array` containing the replacement elements.
+        * @param selector A callable that takes either `T&` (element reference) or `size_t, T&` (index, element reference) and returns `bool`.
+        * @return A new `list_array` with the replacements made.
+                *
+        * The `selector` can optionally take the element's index as its first argument.
+        * If the `selector` accepts the index, it will be provided during the replacement process.
+        */
+        template <class AnyAllocator, class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> replace_if(const list_array<T, AnyAllocator>& with, FN&& selector) &&
+            requires std::is_copy_constructible_v<T> && (std::is_invocable_r_v<bool, FN, T&> || std::is_invocable_r_v<bool, FN, size_t, T&>)
+        {
+            return replace_if(with, std::forward<FN>(selector)).take();
+        }
+
+        /**
+         * @brief Replaces elements with elements from the C array `with` if the `selector` function returns `true`.
+         *        The size of the C array is automatically deduced.
+         * @tparam with_size The size of the C array `with` (deduced automatically).
+         * @tparam FN The type of the selector function.
+         * @param with A C array containing the replacement elements.
+         * @param selector A callable that takes either `T&` (element reference) or `size_t, T&` (index, element reference) and returns `bool`.
+         * @return A reference to the modified `list_array`.
+         *
+         * The `selector` can optionally take the element's index as its first argument.
+         * If the `selector` accepts the index, it will be provided during the replacement process.
+         */
+        template <size_t with_size, class FN>
+        constexpr list_array<T, Allocator>& replace_if(const T (&with)[with_size], FN&& selector) &
+            requires std::is_copy_constructible_v<T> && (std::is_invocable_r_v<bool, FN, T&> || std::is_invocable_r_v<bool, FN, size_t, T&>)
+        {
+            return replace_if(with, with_size, std::forward<FN>(selector));
+        }
+
+        /**
+         * @brief Replaces elements with elements from the C array `with` if the `selector` function returns `true`,
+         *        returning a new `list_array`. The size of the C array is automatically deduced.
+         * @tparam with_size The size of the C array `with` (deduced automatically).
+         * @tparam FN The type of the selector function.
+         * @param with A C array containing the replacement elements.
+         * @param selector A callable that takes either `T&` (element reference) or `size_t, T&` (index, element reference) and returns `bool`.
+         * @return A new `list_array` with the replacements made.
+         *
+         * The `selector` can optionally take the element's index as its first argument.
+         * If the `selector` accepts the index, it will be provided during the replacement process.
+         */
+        template <size_t with_size, class FN>
+        constexpr [[nodiscard]] list_array<T, Allocator> replace_if(const T (&with)[with_size], FN&& selector) &&
+            requires std::is_copy_constructible_v<T> && (std::is_invocable_r_v<bool, FN, T&> || std::is_invocable_r_v<bool, FN, size_t, T&>)
+        {
+            return replace_if(with, with_size, std::forward<FN>(selector)).take();
+        }
+
+/// @}
 #pragma endregion
 #pragma region index and iterators
 
+        /// @name index and iterators
+        /// @{
         /**
          * @brief Returns an iterator to the beginning of the array.
          *
@@ -7377,284 +8463,12 @@ namespace __new_list_array_impl {
             return *this;
         }
 
-#pragma endregion
-#pragma region view
-
-        /**
-         * @brief Returns a raw pointer to the underlying data array, if possible.
-         *
-         * This function returns a pointer to the first element of the underlying contiguous data array, if the array is stored in a single block. If the array is fragmented across multiple blocks, commits it.
-         *
-         * @return A pointer to the first element of the underlying data array.
-         */
-        constexpr [[nodiscard]] T* data() & {
-            if (blocks_more(1))
-                commit();
-            if (first_block)
-                return first_block->data + _reserved_front;
-            else
-                return nullptr;
-        }
-
-        /**
-         * @brief Returns a const raw pointer to the underlying data array, if possible.
-         *
-         * This function returns a const pointer to the first element of the underlying contiguous data array, if the array is stored in a single block. If the array is fragmented across multiple blocks, it throws a `std::runtime_error`.
-         *
-         * @return A const pointer to the first element of the underlying data array.
-         * @throws std::runtime_error If the array is fragmented across multiple blocks.
-         */
-        constexpr [[nodiscard]] const T* data() const& {
-            if (blocks_more(1))
-                throw std::runtime_error("can't get const raw pointer when blocks more than 1");
-            if (first_block)
-                return first_block->data + _reserved_front;
-            else
-                return nullptr;
-        }
-
-        /**
-         * @brief Returns the maximum value in the array by moving it out.
-         *
-         * This function finds the maximum value in the array, moves it out of the array, and returns it by value. The array is modified as the maximum element is removed.
-         *
-         * @return The maximum value in the array.
-         * @throws std::length_error If the array is empty.
-         * @tparam Requires the element type (`T`) to be totally ordered.
-         */
-        constexpr [[nodiscard]] T max() &&
-            requires std::totally_ordered<T>
-        {
-            if (!_size())
-                throw std::length_error("This list_array size is zero");
-            const T* max = &operator[](0);
-            for (const T& it : *this)
-                if (*max < it)
-                    max = &it;
-            return std::move(*max);
-        }
-
-        /**
-         * @brief Returns the minimum value in the array by moving it out.
-         *
-         * This function finds the minimum value in the array, moves it out of the array, and returns it by value. The array is modified as the minimum element is removed.
-         *
-         * @return The minimum value in the array.
-         * @throws std::length_error If the array is empty.
-         * @tparam Requires the element type (`T`) to be totally ordered.
-         */
-        constexpr [[nodiscard]] T min() &&
-            requires std::totally_ordered<T>
-        {
-            if (!_size())
-                throw std::length_error("This list_array size is zero");
-            const T* min = &operator[](0);
-            for (const T& it : *this)
-                if (*min > it)
-                    min = &it;
-            return std::move(*min);
-        }
-
-        /**
-         * @brief Returns a const reference to the maximum value in the array.
-         *
-         * This function finds the maximum value in the array and returns a const reference to it. The array is not modified.
-         *
-         * @return A const reference to the maximum value in the array.
-         * @throws std::length_error If the array is empty.
-         * @tparam Requires the element type (`T`) to be totally ordered.
-         */
-        constexpr [[nodiscard]] const T& max() const&
-            requires std::totally_ordered<T>
-        {
-            if (!_size())
-                throw std::length_error("This list_array size is zero");
-            const T* max = &operator[](0);
-            for (const T& it : *this)
-                if (*max < it)
-                    max = &it;
-            return *max;
-        }
-
-        /**
-         * @brief Returns a const reference to the minimum value in the array.
-         *
-         * This function finds the minimum value in the array and returns a const reference to it. The array is not modified.
-         *
-         * @return A const reference to the minimum value in the array.
-         * @throws std::length_error If the array is empty.
-         * @tparam Requires the element type (`T`) to be totally ordered.
-         */
-        constexpr [[nodiscard]] const T& min() const&
-            requires std::totally_ordered<T>
-        {
-            if (!_size())
-                throw std::length_error("This list_array size is zero");
-            const T* min = &operator[](0);
-            for (const T& it : *this)
-                if (*min > it)
-                    min = &it;
-            return *min;
-        }
-
-        /**
-         * @brief Returns the maximum value in the array, or a default-constructed value if the array is empty.
-         *
-         * This function finds the maximum value in the array and returns a copy of it. If the array is empty, it returns a default-constructed T object.
-         *
-         * @return A copy of the maximum value in the array, or a default-constructed T if the array is empty.
-         * @tparam Requires the element type (`T`) to be copy constructible and totally ordered.
-         */
-        constexpr [[nodiscard]] T max_default() const
-            requires std::copy_constructible<T> && std::totally_ordered<T>
-        {
-            if (!_size())
-                return T{};
-            const T* max = &operator[](0);
-            for (const T& it : *this)
-                if (*max < it)
-                    max = &it;
-            return *max;
-        }
-
-        /**
-         * @brief Returns the minimum value in the array, or a default-constructed value if the array is empty.
-         *
-         * This function finds the minimum value in the array and returns a copy of it. If the array is empty, it returns a default-constructed T object.
-         *
-         * @return A copy of the minimum value in the array, or a default-constructed T if the array is empty.
-         * @tparam Requires the element type (`T`) to be copy constructible and totally ordered.
-         */
-        constexpr [[nodiscard]] T min_default() const
-            requires std::copy_constructible<T> && std::totally_ordered<T>
-        {
-            if (!_size())
-                return T{};
-            const T* min = &operator[](0);
-            for (const T& it : *this)
-                if (*min > it)
-                    min = &it;
-            return *min;
-        }
-
-#pragma endregion
-#pragma region to_...
-
-        /**
-         * @brief  Converts the list_array into a contiguous array.
-         *
-         * Creates a new array and copies all elements from the list_array into it. 
-         * This is a const reference version, suitable when you don't want to move
-         * the original list_array's contents.
-         *
-         * @param alloc The allocator to use for the new array (defaults to std::allocator<T>).
-         * @return T* A pointer to the newly created array.
-         */
-        template <class LocalAllocator>
-        constexpr [[nodiscard]] T* to_array(LocalAllocator alloc = std::allocator<T>()) const&
-            requires std::is_copy_constructible<T>
-        {
-            T* tmp = alloc.allocate(_size());
-            forEach([tmp](size_t index, const T& it) { std::construct_at(tmp + index, it); });
-            return tmp;
-        }
-
-        /**
-         * @brief Converts the list_array into a contiguous array (move version).
-         *
-         * This version moves elements out of the list_array, potentially leaving
-         * the list_array empty. This is more efficient when you don't need the 
-         * original list_array anymore.
-         *
-         * @param alloc The allocator to use for the new array (defaults to std::allocator<T>).
-         * @return T* A pointer to the newly created array.
-         */
-        template <class LocalAllocator>
-        constexpr [[nodiscard]] T* to_array(LocalAllocator alloc = std::allocator<T>()) &&
-            requires std::is_copy_constructible<T>
-        {
-            T* tmp = alloc.allocate(_size());
-            forEach([tmp](size_t index, T&& it) { std::construct_at(tmp + index, std::move(it)); });
-            return tmp;
-        }
-
-        /**
-         * @brief Converts the list_array into a specified `Container` type.
-         *
-         * Copies elements from the list_array into a new `Container`. 
-         * This is the const reference version.
-         *
-         * @return Container A new container of the specified type, filled with the list_array's elements.
-         */
-        template <class Container>
-        constexpr [[nodiscard]] Container to_container() const&
-            requires is_container_v<Container>
-        {
-            Container copy_container;
-            size_t iter = size();
-            size_t insert_at = 0;
-            auto iterate = begin();
-            copy_container.resize(iter);
-            while (iter--)
-                copy_container[insert_at++] = *iterate++;
-            return copy_container;
-        }
-
-        /**
-         * @brief Converts the list_array into a specified `Container` type (move version).
-         *
-         * Moves elements from the list_array into a new `Container`.
-         *
-         * @return Container A new container of the specified type, filled with the list_array's elements.
-         */
-        template <class Container>
-        constexpr [[nodiscard]] Container to_container() &&
-            requires is_container_v<Container>
-        {
-            Container move_container;
-            size_t iter = size();
-            size_t insert_at = 0;
-            auto iterate = begin();
-            move_container.resize(iter);
-            while (iter--)
-                move_container[insert_at++] = std::move(*iterate++);
-            return move_container;
-        }
-
-#pragma endregion
-#pragma region flip
-
-        /**
-         * @brief Reverses the order of elements in the list_array.
-         *
-         * This is the lvalue reference version, modifying the original list_array.
-         *
-         * @return list_array<T, Allocator>& A reference to the modified list_array.
-         */
-        constexpr [[nodiscard]] list_array<T, Allocator>& flip() & {
-            return *this = take().flip();
-        }
-
-        /**
-         * @brief Reverses the order of elements in the list_array (move version).
-         *
-         * This version returns a new, reversed list_array, leaving the original
-         * unmodified.
-         *
-         * @return list_array<T, Allocator> A new list_array with reversed order.
-         */
-        constexpr [[nodiscard]] list_array<T, Allocator> flip() && {
-            list_array<T, Allocator> cache(get_allocator());
-            cache.reserve(size());
-            take().forEachReverse([&cache](T&& item) {
-                reserve.push_back(std::move(item));
-            });
-            return cache;
-        }
-
+/// @}
 #pragma endregion
 #pragma region size, capacity, reservation
 
+        /// @name size, capacity, reservation
+        /// @{
         /**
          * @brief Removes all elements from the container, deallocating memory.
          * 
@@ -7739,36 +8553,36 @@ namespace __new_list_array_impl {
          * @brief Reserves additional space at the front of the container for efficient `push_front` operations.
          * 
          * @param size The amount of additional space to reserve at the front.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void reserve_front(size_t size) & {
+        constexpr list_array<T, Allocator>& reserve_front(size_t size) & {
             _reserved_front += size;
             if (first_block) {
                 auto new_block = arr_block<T>::create_block(allocator_and_size.get_allocator(), size);
                 new_block->next = first_block;
                 first_block->prev = new_block;
                 first_block = new_block;
-            } else {
-                first_block = arr_block<T>::create_block(allocator_and_size.get_allocator(), size);
-                last_block = first_block;
-            }
+            } else
+                last_block = first_block = arr_block<T>::create_block(allocator_and_size.get_allocator(), size);
+            return *this;
         }
 
         /**
          * @brief Reserves additional space at the back of the container for efficient `push_back` operations.
          * 
          * @param size The amount of additional space to reserve at the back.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void reserve_back(size_t size) & {
+        constexpr list_array<T, Allocator>& reserve_back(size_t size) & {
             _reserved_back += size;
             if (last_block) {
                 auto new_block = arr_block<T>::create_block(allocator_and_size.get_allocator(), size);
                 new_block->prev = last_block;
                 last_block->next = new_block;
                 last_block = new_block;
-            } else {
-                last_block = arr_block<T>::create_block(allocator_and_size.get_allocator(), size);
-                first_block = last_block;
-            }
+            } else
+                first_block = last_block = arr_block<T>::create_block(allocator_and_size.get_allocator(), size);
+            return *this;
         }
 
         /**
@@ -7779,8 +8593,9 @@ namespace __new_list_array_impl {
          *
          * @param size The required amount of reserved space at the front.
          * @param steal If true (default), allows stealing a block from the back if needed.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void prepare_front(size_t size, bool steal = true) & {
+        constexpr list_array<T, Allocator>& prepare_front(size_t size, bool steal = true) & {
             if (_reserved_front < size) {
                 if (steal)
                     if (_reserved_back)
@@ -7791,6 +8606,7 @@ namespace __new_list_array_impl {
                         }
                 reserve_front(size - _reserved_front);
             }
+            return *this;
         }
 
         /**
@@ -7801,18 +8617,20 @@ namespace __new_list_array_impl {
          *
          * @param size The required amount of reserved space at the back.
          * @param steal If true (default), allows stealing a block from the front if needed.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void prepare_back(size_t size, bool steal = true) & {
+        constexpr list_array<T, Allocator>& prepare_back(size_t size, bool steal = true) & {
             if (_reserved_back < size) {
                 if (steal)
                     if (_reserved_front)
                         if (first_block->data_size <= _reserved_front) {
                             steal_reserve_block_front_to_back();
                             prepare_back(size - first_block->data_size);
-                            return;
+                            return *this;
                         }
                 reserve_back(size - _reserved_back);
             }
+            return *this;
         }
 
         /**
@@ -7821,13 +8639,19 @@ namespace __new_list_array_impl {
          * This is equivalent to calling `reserve_back(size)`.
          * 
          * @param size The total number of elements the container should be able to hold without reallocation.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void reserve(size_t size) & {
+        constexpr list_array<T, Allocator>& reserve(size_t size) & {
             reserve_back(size);
+            return *this;
         }
 
+/// @}
 #pragma endregion
 #pragma region resize
+
+        /// @name resize
+        /// @{
 
         /**
          * @brief Resizes the container to the specified size, using default construction for new elements.
@@ -7835,13 +8659,13 @@ namespace __new_list_array_impl {
          * If `new_size` is smaller than the current size, elements are removed from the end. 
          * If `new_size` is larger, new elements are value-initialized (default constructed).
          *
-         * @tparam Requires T to be default constructible.
          * @param new_size The new size of the container.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void resize(size_t new_size) &
+        constexpr list_array<T, Allocator>& resize(size_t new_size) &
             requires std::is_default_constructible_v<T>
         {
-            resize(new_size, T());
+            return resize(new_size, T());
         }
 
         /**
@@ -7852,8 +8676,9 @@ namespace __new_list_array_impl {
          *
          * @param new_size The new size of the container.
          * @param set The value to copy-construct new elements from.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void resize(size_t new_size, const T& set) & {
+        constexpr list_array<T, Allocator>& resize(size_t new_size, const T& set) & {
             if (new_size < _size()) {
                 auto iter = get_iterator_at_index(new_size);
                 erase_range(iter, end());
@@ -7865,17 +8690,24 @@ namespace __new_list_array_impl {
                 _size() += elements_to_add;
                 _reserved_back -= elements_to_add;
             }
+            return *this;
         }
 
+/// @}
 #pragma endregion
 #pragma region memory
+
+        /// @name memory
+        /// @{
 
         /**
          * @brief Releases any reserved space at the front of the container.
          *
          * This function iterates through the blocks at the front of the array that are part of the reserved space. If a block is entirely within the reserved space, it is destroyed and deallocated. If a block is partially within the reserved space, it is resized to exclude the reserved portion, and the remaining elements are copied to a new block. The reserved space at the front is then reset to zero.
+         *
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void shrink_front() & {
+        constexpr list_array<T, Allocator>& shrink_front() & {
             auto current = first_block;
             auto& allocator = allocator_and_size.get_allocator();
             while (current->next && _reserved_front) {
@@ -7900,14 +8732,17 @@ namespace __new_list_array_impl {
                 arr_block<T>::destroy_block(current, allocator);
                 current = next;
             }
+            return *this;
         }
 
         /**
          * @brief Releases any reserved space at the back of the container.
          *
          * This function is similar to `shrink_front()`, but it operates on the blocks at the back of the array. It iterates through the blocks in reverse order, destroying and deallocating blocks that are entirely within the reserved space, and resizing blocks that are partially within the reserved space. The reserved space at the back is then reset to zero.
+         *
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void shrink_back() & {
+        constexpr list_array<T, Allocator>& shrink_back() & {
             auto current = last_block;
             auto& allocator = allocator_and_size.get_allocator();
             while (current->prev && _reserved_back) {
@@ -7932,18 +8767,22 @@ namespace __new_list_array_impl {
                 arr_block<T>::destroy_block(current, allocator);
                 current = prev;
             }
+            return *this;
         }
 
         /**
          * @brief Releases all reserved space in the container.
          * 
          * This is equivalent to calling both `shrink_front()` and `shrink_back()`.
+         * 
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void shrink_to_fit() & {
+        constexpr list_array<T, Allocator>& shrink_to_fit() & {
             if (_reserved_front)
                 shrink_front();
             if (_reserved_back)
                 shrink_back();
+            return *this;
         }
 
         /**
@@ -7951,10 +8790,12 @@ namespace __new_list_array_impl {
          *
          * This operation may be expensive, so it's typically used after a series of insertions 
          * and deletions to optimize memory layout.
+         * 
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void commit() & {
+        constexpr list_array<T, Allocator>& commit() & {
             if (!blocks_more(1))
-                return;
+                return *this;
             arr_block_manager<T, Allocator> manager(allocator_and_size.get_allocator());
             auto iter = begin();
             manager.add_block(
@@ -7962,8 +8803,10 @@ namespace __new_list_array_impl {
             );
             clear();
             first_block = last_block = manager.get_first();
+            _reserved_back = _reserved_front = 0;
             _size() = last_block->data_size;
             manager.release();
+            return *this;
         }
 
         /**
@@ -7973,8 +8816,9 @@ namespace __new_list_array_impl {
          * to prepare the container for more insertions and deletions.
          *
          * @param total_blocks The desired number of blocks to distribute elements into.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void decommit(size_t total_blocks) & {
+        constexpr list_array<T, Allocator>& decommit(size_t total_blocks) & {
             if (total_blocks == 0 || _size() == 0)
                 return;
             else if (total_blocks > _size())
@@ -7998,6 +8842,7 @@ namespace __new_list_array_impl {
             last_block = manager.get_last();
             _size() = blocks_size * total_blocks + add_last;
             manager.release();
+            return *this;
         }
 
         /**
@@ -8053,41 +8898,355 @@ namespace __new_list_array_impl {
             return blocks;
         }
 
+/// @}
+#pragma endregion
+#pragma region view
+
+        /// @name view
+        /// @{
+        /**
+         * @brief Returns a raw pointer to the underlying data array, if possible.
+         *
+         * This function returns a pointer to the first element of the underlying contiguous data array, if the array is stored in a single block. If the array is fragmented across multiple blocks, commits it.
+         *
+         * @return A pointer to the first element of the underlying data array.
+         */
+        constexpr [[nodiscard]] T* data() & {
+            if (blocks_more(1))
+                commit();
+            if (first_block)
+                return first_block->data + _reserved_front;
+            else
+                return nullptr;
+        }
+
+        /**
+         * @brief Returns a const raw pointer to the underlying data array, if possible.
+         *
+         * This function returns a const pointer to the first element of the underlying contiguous data array, if the array is stored in a single block. If the array is fragmented across multiple blocks, it throws a `std::runtime_error`.
+         *
+         * @return A const pointer to the first element of the underlying data array.
+         * @throws std::runtime_error If the array is fragmented across multiple blocks.
+         */
+        constexpr [[nodiscard]] const T* data() const& {
+            if (blocks_more(1))
+                throw std::runtime_error("can't get const raw pointer when blocks more than 1");
+            if (first_block)
+                return first_block->data + _reserved_front;
+            else
+                return nullptr;
+        }
+
+        /**
+         * @brief Returns the maximum value in the array by moving it out.
+         *
+         * This function finds the maximum value in the array, moves it out of the array, and returns it by value. The array is modified as the maximum element is removed.
+         *
+         * @return The maximum value in the array.
+         * @throws std::length_error If the array is empty.
+         */
+        constexpr [[nodiscard]] T max() &&
+            requires std::totally_ordered<T>
+        {
+            if (!_size())
+                throw std::length_error("This list_array size is zero");
+            const T* max = &operator[](0);
+            for (const T& it : *this)
+                if (*max < it)
+                    max = &it;
+            return std::move(*max);
+        }
+
+        /**
+         * @brief Returns the minimum value in the array by moving it out.
+         *
+         * This function finds the minimum value in the array, moves it out of the array, and returns it by value. The array is modified as the minimum element is removed.
+         *
+         * @return The minimum value in the array.
+         * @throws std::length_error If the array is empty.
+         */
+        constexpr [[nodiscard]] T min() &&
+            requires std::totally_ordered<T>
+        {
+            if (!_size())
+                throw std::length_error("This list_array size is zero");
+            const T* min = &operator[](0);
+            for (const T& it : *this)
+                if (*min > it)
+                    min = &it;
+            return std::move(*min);
+        }
+
+        /**
+         * @brief Returns a const reference to the maximum value in the array.
+         *
+         * This function finds the maximum value in the array and returns a const reference to it. The array is not modified.
+         *
+         * @return A const reference to the maximum value in the array.
+         * @throws std::length_error If the array is empty.
+         */
+        constexpr [[nodiscard]] const T& max() const&
+            requires std::totally_ordered<T>
+        {
+            if (!_size())
+                throw std::length_error("This list_array size is zero");
+            const T* max = &operator[](0);
+            for (const T& it : *this)
+                if (*max < it)
+                    max = &it;
+            return *max;
+        }
+
+        /**
+         * @brief Returns a const reference to the minimum value in the array.
+         *
+         * This function finds the minimum value in the array and returns a const reference to it. The array is not modified.
+         *
+         * @return A const reference to the minimum value in the array.
+         * @throws std::length_error If the array is empty.
+         */
+        constexpr [[nodiscard]] const T& min() const&
+            requires std::totally_ordered<T>
+        {
+            if (!_size())
+                throw std::length_error("This list_array size is zero");
+            const T* min = &operator[](0);
+            for (const T& it : *this)
+                if (*min > it)
+                    min = &it;
+            return *min;
+        }
+
+        /**
+         * @brief Returns the maximum value in the array, or a default-constructed value if the array is empty.
+         *
+         * This function finds the maximum value in the array and returns a copy of it. If the array is empty, it returns a default-constructed T object.
+         *
+         * @return A copy of the maximum value in the array, or a default-constructed T if the array is empty.
+         */
+        constexpr [[nodiscard]] T max_default() const
+            requires std::copy_constructible<T> && std::totally_ordered<T>
+        {
+            if (!_size())
+                return T{};
+            const T* max = &operator[](0);
+            for (const T& it : *this)
+                if (*max < it)
+                    max = &it;
+            return *max;
+        }
+
+        /**
+         * @brief Returns the minimum value in the array, or a default-constructed value if the array is empty.
+         *
+         * This function finds the minimum value in the array and returns a copy of it. If the array is empty, it returns a default-constructed T object.
+         *
+         * @return A copy of the minimum value in the array, or a default-constructed T if the array is empty.
+         */
+        constexpr [[nodiscard]] T min_default() const
+            requires std::copy_constructible<T> && std::totally_ordered<T>
+        {
+            if (!_size())
+                return T{};
+            const T* min = &operator[](0);
+            for (const T& it : *this)
+                if (*min > it)
+                    min = &it;
+            return *min;
+        }
+
+/// @}
+#pragma endregion
+#pragma region to_...
+
+        /// @name cast to_...
+        /// @{
+        /**
+         * @brief  Converts the list_array into a contiguous array.
+         *
+         * Creates a new array and copies all elements from the list_array into it. 
+         * This is a const reference version, suitable when you don't want to move
+         * the original list_array's contents.
+         *
+         * @param alloc The allocator to use for the new array (defaults to std::allocator<T>).
+         * @return T* A pointer to the newly created array.
+         */
+        template <class LocalAllocator>
+        constexpr [[nodiscard]] T* to_array(LocalAllocator alloc = std::allocator<T>()) const&
+            requires std::is_copy_constructible<T>
+        {
+            T* tmp = alloc.allocate(_size());
+            for_each([tmp](size_t index, const T& it) { std::construct_at(tmp + index, it); });
+            return tmp;
+        }
+
+        /**
+         * @brief Converts the list_array into a contiguous array (move version).
+         *
+         * This version moves elements out of the list_array, potentially leaving
+         * the list_array empty. This is more efficient when you don't need the 
+         * original list_array anymore.
+         *
+         * @param alloc The allocator to use for the new array (defaults to std::allocator<T>).
+         * @return T* A pointer to the newly created array.
+         */
+        template <class LocalAllocator>
+        constexpr [[nodiscard]] T* to_array(LocalAllocator alloc = std::allocator<T>()) &&
+            requires std::is_copy_constructible<T>
+        {
+            T* tmp = alloc.allocate(_size());
+            for_each([tmp](size_t index, T&& it) { std::construct_at(tmp + index, std::move(it)); });
+            return tmp;
+        }
+
+        /**
+         * @brief Converts the list_array into a specified `Container` type.
+         *
+         * Copies elements from the list_array into a new `Container`. 
+         * This is the const reference version.
+         *
+         * @return Container A new container of the specified type, filled with the list_array's elements.
+         */
+        template <class Container>
+        constexpr [[nodiscard]] Container to_container() const&
+            requires is_container_v<Container>
+        {
+            Container copy_container;
+            copy_container.resize(size());
+            for_each([&copy_container](size_t i, const T& it) {
+                copy_container[i] = it;
+            });
+            return copy_container;
+        }
+
+        /**
+         * @brief Converts the list_array into a specified `Container` type (move version).
+         *
+         * Moves elements from the list_array into a new `Container`.
+         *
+         * @return Container A new container of the specified type, filled with the list_array's elements.
+         */
+        template <class Container>
+        constexpr [[nodiscard]] Container to_container() &&
+            requires is_container_v<Container>
+        {
+            Container move_container;
+            move_container.resize(size());
+            std::move(*this).for_each([&move_container](size_t i, T&& it) {
+                move_container[i] = std::move(it);
+            });
+            return move_container;
+        }
+
+/// @}
+#pragma endregion
+#pragma region flip
+
+        /// @name flip
+        /// @{
+        /**
+         * @brief Reverses the order of elements in the list_array.
+         *
+         * This is the lvalue reference version, modifying the original list_array.
+         *
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
+         */
+        constexpr [[nodiscard]] list_array<T, Allocator>& flip() & {
+            return *this = take().flip();
+        }
+
+        /**
+         * @brief Reverses the order of elements in the list_array (move version).
+         *
+         * This version returns a new, reversed list_array, leaving the original
+         * unmodified.
+         *
+         * @return list_array<T, Allocator> A new list_array with reversed order.
+         */
+        constexpr [[nodiscard]] list_array<T, Allocator> flip() && {
+            list_array<T, Allocator> cache(get_allocator());
+            cache.reserve(size());
+            take().for_each_reverse([&cache](T&& item) {
+                reserve.push_back(std::move(item));
+            });
+            return cache;
+        }
+
+/// @}
 #pragma endregion
 #pragma region ordered_insert
 
+        /// @name ordered_insert
+        /// @{
         /**
          * @brief Inserts an element while maintaining the sorted order of the container.
          *
          * @param value The element to insert.
-         * @tparam Requires the container's value type (`T`) to be less-than comparable.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void ordered_insert(const T& value)
+        constexpr list_array<T, Allocator>& ordered_insert(const T& value) &
             requires std::totally_ordered<T>
         {
             if (_size() == 0) {
                 push_back(value);
-                return;
+                return *this;
             }
             insert(std::lower_bound(begin(), end(), value).absolute_index, value);
+            return *this;
         }
 
         /**
          * @brief Inserts an element while maintaining the sorted order of the container, using move semantics.
          *
          * @param value The element to move into the array.
-         * @tparam Requires the container's value type (`T`) to be less-than comparable.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr void ordered_insert(T&& value)
+        constexpr list_array<T, Allocator>& ordered_insert(T&& value) &
             requires std::totally_ordered<T>
         {
             if (_size() == 0) {
                 push_back(std::move(value));
-                return;
+                return *this;
             }
             insert(std::lower_bound(begin(), end(), value).absolute_index, std::move(value));
+            return *this;
         }
 
+        /**
+         * @brief Inserts an element while maintaining the sorted order of the container.
+         *
+         * @param value The element to insert.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
+         */
+        constexpr list_array<T, Allocator> ordered_insert(const T& value) &&
+            requires std::totally_ordered<T>
+        {
+            if (_size() == 0) {
+                push_back(value);
+                return std::move(*this);
+            }
+            insert(std::lower_bound(begin(), end(), value).absolute_index, value);
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Inserts an element while maintaining the sorted order of the container, using move semantics.
+         *
+         * @param value The element to move into the array.
+         * @return list_array<T, Allocator>& A reference to the modified list_array.
+         */
+        constexpr list_array<T, Allocator> ordered_insert(T&& value) &&
+            requires std::totally_ordered<T>
+        {
+            if (_size() == 0) {
+                push_back(std::move(value));
+                return std::move(*this);
+            }
+            insert(std::lower_bound(begin(), end(), value).absolute_index, std::move(value));
+            return std::move(*this);
+        }
+
+/// @}
 #pragma endregion
 
         /**
@@ -8192,39 +9351,44 @@ public:
         return *this;
     }
 
-    constexpr void push_back(bool val) {
+    constexpr bit_list_array& push_back(bool val) {
         if (end_bit == 8) {
             arr.push_back(0);
             end_bit = 0;
+            return *this;
         }
         arr[arr.size() - 1] |= val << end_bit++;
+        return *this;
     }
 
-    constexpr void pop_back() {
+    constexpr bit_list_array& pop_back() {
         if (end_bit == 0) {
             arr.pop_back();
             end_bit = 8;
-            return;
+            return *this;
         }
         end_bit--;
         arr[arr.size() - 1] &= ~(1 << end_bit);
+        return *this;
     }
 
-    constexpr void push_front(bool val) {
+    constexpr bit_list_array& push_front(bool val) {
         if (begin_bit == 0) {
             arr.push_front(0);
             begin_bit = 8;
         }
         arr[0] |= val << --begin_bit;
+        return *this;
     }
 
-    constexpr void pop_front() {
+    constexpr bit_list_array& pop_front() {
         if (begin_bit == 8) {
             arr.pop_front();
             begin_bit = 0;
-            return;
+            return *this;
         }
         arr[0] &= ~(1 << begin_bit++);
+        return *this;
     }
 
     constexpr bool at(size_t pos) const {
@@ -8275,19 +9439,21 @@ public:
         end_bit = 0;
     }
 
-    constexpr void resize(size_t size) {
+    constexpr bit_list_array& resize(size_t size) {
         arr.resize(size / 8 + (size % 8 ? 1 : 0));
+        return *this;
     }
 
-    constexpr void reserve_back(size_t size) {
+    constexpr bit_list_array& reserve_back(size_t size) {
         arr.reserve_back(size / 8 + (size % 8 ? 1 : 0));
+        return *this;
     }
 
-    constexpr void reserve_front(size_t size) {
+    constexpr bit_list_array& reserve_front(size_t size) {
         arr.reserve_front(size / 8 + (size % 8 ? 1 : 0));
     }
 
-    constexpr void commit() {
+    constexpr bit_list_array& commit() {
         //if array contains unused bits, then shift all bits to the left
         if (begin_bit != 0) {
             bit_list_array tmp;
@@ -8299,9 +9465,10 @@ public:
         } else {
             arr.commit();
         }
+        return *this;
     }
 
-    constexpr void swap(bit_list_array& to_swap) noexcept {
+    constexpr bit_list_array& swap(bit_list_array& to_swap) noexcept {
         if (this != &to_swap) {
             arr.swap(to_swap.arr);
             uint8_t tmp = begin_bit;
@@ -8311,6 +9478,7 @@ public:
             end_bit = to_swap.end_bit;
             to_swap.end_bit = tmp;
         }
+        return *this;
     }
 
     constexpr bit_list_array& flip() {
@@ -8402,11 +9570,11 @@ public:
         return !operator==(to_cmp);
     }
 
-    constexpr const list_array<uint8_t>& data() const {
+    constexpr const list_array<uint8_t, Allocator>& data() const {
         return arr;
     }
 
-    constexpr list_array<uint8_t>& data() {
+    constexpr list_array<uint8_t, Allocator>& data() {
         return arr;
     }
 };
@@ -8420,6 +9588,14 @@ namespace std {
             for (auto& it : list)
                 res ^= hasher(it) + 0x9e3779b9 + (res << 6) + (res >> 2);
             return res;
+        }
+    };
+
+    template < class Allocator>
+    struct hash<bit_list_array<Allocator>> {
+        constexpr size_t operator()(const bit_list_array<Allocator>& list) {
+            hash<list_array<uint8_t, Allocator>> hasher;
+            return hasher(list.data());
         }
     };
 }

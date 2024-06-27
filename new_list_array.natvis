@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+	<Type Name="__new_list_array_impl::list_array&lt;*,*&gt;">
+		<DisplayString>{{ size={allocator_and_size.hold_value} }}</DisplayString>
+		<Expand>
+			<Item Name="[size]" ExcludeView="simple">allocator_and_size.hold_value</Item>
+			<Synthetic Name="[capacity]">
+				<DisplayString>{allocator_and_size.hold_value + _reserved_front + _reserved_back}</DisplayString>
+				<Expand>
+					<Item Name="[back]" ExcludeView="simple">_reserved_back</Item>
+					<Item Name="[front]" ExcludeView="simple">_reserved_front</Item>
+				</Expand>
+			</Synthetic>
+			<CustomListItems MaxItemsPerView="5000" ExcludeView="Test">
+				<Variable Name="block_iter" InitialValue="first_block" />
+				<Variable Name="max_pos" InitialValue="allocator_and_size.hold_value" />
+				<Variable Name="in_block_iter" InitialValue="0" />
+				<Variable Name="skip_count" InitialValue="_reserved_front" />
+
+				<Loop>
+					<Loop Condition="max_pos != 0">
+						<If	Condition="block_iter->data_size == in_block_iter">
+							<Exec>in_block_iter = 0</Exec>
+							<Break/>
+						</If>
+
+						<If Condition="skip_count == 0">
+							<Item>*(block_iter->data + in_block_iter)</Item>
+							<Exec>--max_pos</Exec>
+						</If>
+
+						<Exec Condition="skip_count != 0">--skip_count</Exec>
+						<Exec>++in_block_iter</Exec>
+					</Loop>
+					<Break Condition="max_pos == 0"/>
+					<Exec>block_iter = block_iter->next</Exec>
+				</Loop>
+			</CustomListItems>
+		</Expand>
+	</Type>
+</AutoVisualizer>
