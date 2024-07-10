@@ -7117,6 +7117,81 @@ namespace __new_list_array_impl {
         /// @name convert
         /// @{
 
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert() const&
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            return convert<ConvertTo>(0, _size());
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert(size_t start_pos) const&
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            return convert<ConvertTo>(start_pos, _size());
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert(size_t start_pos, size_t end_pos) const&
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            result_array res;
+            if (end_pos > _size())
+                throw std::out_of_range("end_pos out of size limit");
+            res.reserve_back(end_pos - start_pos);
+            for (auto& i : range(start_pos, end_pos))
+                res.push_back((ConvertTo)(i));
+            return res;
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert() &&
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            return convert_take<ConvertTo, result_array>(0, _size());
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert(size_t start_pos) &&
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            return convert_take<ConvertTo, result_array>(start_pos, _size());
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert(size_t start_pos, size_t end_pos) &&
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            return convert_take<ConvertTo, result_array>(start_pos, end_pos);
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert_take()
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            return convert_take<ConvertTo, result_array>(0, _size());
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert_take(size_t start_pos)
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            return convert_take<ConvertTo, result_array>(start_pos, _size());
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert_take(size_t start_pos, size_t end_pos)
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            list_array<T, Allocator> tmp = take(start_pos, end_pos);
+            result_array res;
+            res.reserve(tmp.size());
+            for (auto& i : tmp.range(start_pos, end_pos))
+                res.push_back((ConvertTo)(std::move(i)));
+            return res;
+        }
+
         /**
          * @brief Converts elements in the array to a different type.
          *
@@ -7130,7 +7205,10 @@ namespace __new_list_array_impl {
          */
         template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
         constexpr [[nodiscard]] result_array convert(FN&& iterate_fn) const&
-            requires std::is_invocable_r_v<ConvertTo, FN, const T&> || std::is_invocable_r_v<ConvertTo, FN, size_t, const T&>
+            requires(
+                (std::is_invocable_v<FN, const T&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, const T&>>) ||
+                (std::is_invocable_v<FN, size_t, const T&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, const T&>>)
+            )
         {
             return convert<ConvertTo>(0, _size(), std::forward<FN>(iterate_fn));
         }
@@ -7147,12 +7225,15 @@ namespace __new_list_array_impl {
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
-        constexpr [[nodiscard]] result_array convert(size_t start_pos, FN&& iterate_fn) const&
-            requires std::is_invocable_r_v<ConvertTo, FN, const T&> || std::is_invocable_r_v<ConvertTo, FN, size_t, const T&>
-        {
-            return convert<ConvertTo>(start_pos, _size(), std::forward<FN>(iterate_fn));
-        }
+            template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+            constexpr [[nodiscard]] result_array convert(size_t start_pos, FN&& iterate_fn) const&
+                requires(
+                    (std::is_invocable_v<FN, const T&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, const T&>>) ||
+                    (std::is_invocable_v<FN, size_t, const T&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, const T&>>)
+                )
+            {
+                return convert<ConvertTo>(start_pos, _size(), std::forward<FN>(iterate_fn));
+            }
 
         /**
          * @brief Converts elements in the array to a different type.
@@ -7168,23 +7249,26 @@ namespace __new_list_array_impl {
          * @return A new `result_array` containing the converted elements.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
-        constexpr [[nodiscard]] result_array convert(size_t start_pos, size_t end_pos, FN&& iterate_fn) const&
-            requires std::is_invocable_r_v<ConvertTo, FN, const T&> || std::is_invocable_r_v<ConvertTo, FN, size_t, const T&>
-        {
-            result_array res;
-            if (end_pos > _size())
-                throw std::out_of_range("end_pos out of size limit");
-            res.reserve_back(end_pos - start_pos);
-            if constexpr (std::is_invocable_r_v<ConvertTo, FN, size_t, const T&>) {
-                size_t pos = start_pos;
-                for (auto& i : range(start_pos, end_pos))
-                    res.push_back(iterate_fn(pos++, i));
-            } else
-                for (auto& i : range(start_pos, end_pos))
-                    res.push_back(iterate_fn(i));
-            return res;
-        }
+            template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+            constexpr [[nodiscard]] result_array convert(size_t start_pos, size_t end_pos, FN&& iterate_fn) const&
+                requires(
+                    (std::is_invocable_v<FN, const T&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, const T&>>) ||
+                    (std::is_invocable_v<FN, size_t, const T&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, const T&>>)
+                )
+            {
+                result_array res;
+                if (end_pos > _size())
+                    throw std::out_of_range("end_pos out of size limit");
+                res.reserve_back(end_pos - start_pos);
+                if constexpr (std::is_invocable_r_v<ConvertTo, FN, size_t, const T&>) {
+                    size_t pos = start_pos;
+                    for (auto& i : range(start_pos, end_pos))
+                        res.push_back(iterate_fn(pos++, i));
+                } else
+                    for (auto& i : range(start_pos, end_pos))
+                        res.push_back(iterate_fn(i));
+                return res;
+            }
 
         /**
          * @brief Converts elements in the array to a different type, starting from a given position.
@@ -7198,14 +7282,16 @@ namespace __new_list_array_impl {
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
-        constexpr [[nodiscard]] result_array convert(FN&& iterate_fn) &&
-            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
-        {
-            return convert_take<ConvertTo, result_array>(0, _size(), iterate_fn);
-        }
+            template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+                constexpr [[nodiscard]] result_array convert(FN&& iterate_fn) &&
+                requires(
+                    (std::is_invocable_v<FN, T&&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, T&&>>) ||
+                    (std::is_invocable_v<FN, size_t, T&&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, T&&>>)
+                ) {
+                    return convert_take<ConvertTo, result_array>(0, _size(), std::forward<FN>(iterate_fn));
+                }
 
-        /**
+                /**
          * @brief Converts elements in the array to a different type.
          *
          * This function applies the given function `iterate_fn` to each element in the entire array, converting them to a new type `ConvertTo`. The converted elements are stored in a new `result_array`.
@@ -7216,14 +7302,16 @@ namespace __new_list_array_impl {
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
-        constexpr [[nodiscard]] result_array convert(size_t start_pos, FN&& iterate_fn) &&
-            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
-        {
-            return convert_take<ConvertTo, result_array>(start_pos, _size(), iterate_fn);
-        }
+                template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+                constexpr [[nodiscard]] result_array convert(size_t start_pos, FN&& iterate_fn) &&
+                requires(
+                    (std::is_invocable_v<FN, T&&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, T&&>>) ||
+                    (std::is_invocable_v<FN, size_t, T&&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, T&&>>)
+                ) {
+                    return convert_take<ConvertTo, result_array>(start_pos, _size(), std::forward<FN>(iterate_fn));
+                }
 
-        /**
+                /**
          * @brief Converts elements in the array to a different type (move version).
          *
          * This function is similar to the lvalue reference version of `convert`, but it operates on an rvalue reference (temporary) of the `list_array`. It moves the elements within the specified range (`start_pos` to `end_pos`), applies the conversion function `iterate_fn` to them, and stores the converted elements in a new `result_array`.
@@ -7236,14 +7324,16 @@ namespace __new_list_array_impl {
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
-        constexpr [[nodiscard]] result_array convert(size_t start_pos, size_t end_pos, FN&& iterate_fn) &&
-            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
-        {
-            return convert_take<ConvertTo, result_array>(start_pos, end_pos, iterate_fn);
-        }
+                template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+                constexpr [[nodiscard]] result_array convert(size_t start_pos, size_t end_pos, FN&& iterate_fn) &&
+                requires(
+                    (std::is_invocable_v<FN, T&&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, T&&>>) ||
+                    (std::is_invocable_v<FN, size_t, T&&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, T&&>>)
+                ) {
+                    return convert_take<ConvertTo, result_array>(start_pos, end_pos, std::forward<FN>(iterate_fn));
+                }
 
-        /**
+                /**
          * @brief Converts elements in the array to a different type and takes ownership (move version).
          *
          * This function is similar to the rvalue reference version of `convert`, but it also takes ownership of the elements in the entire array by moving them out. The converted elements are stored in a new `result_array`.
@@ -7254,12 +7344,15 @@ namespace __new_list_array_impl {
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
-        constexpr [[nodiscard]] result_array convert_take(FN&& iterate_fn)
-            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
-        {
-            return convert_take<ConvertTo, result_array>(0, _size(), iterate_fn);
-        }
+                template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+                constexpr [[nodiscard]] result_array convert_take(FN&& iterate_fn)
+                    requires(
+                        (std::is_invocable_v<FN, T &&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, T &&>>) ||
+                        (std::is_invocable_v<FN, size_t, T &&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, T &&>>)
+                    )
+            {
+                return convert_take<ConvertTo, result_array>(0, _size(), std::forward<FN>(iterate_fn));
+            }
 
         /**
          * @brief Converts elements in the array to a different type and takes ownership (move version), starting from a given position.
@@ -7273,12 +7366,15 @@ namespace __new_list_array_impl {
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
-        constexpr [[nodiscard]] result_array convert_take(size_t start_pos, FN&& iterate_fn)
-            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
-        {
-            return convert_take<ConvertTo, result_array>(start_pos, _size(), iterate_fn);
-        }
+            template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+            constexpr [[nodiscard]] result_array convert_take(size_t start_pos, FN&& iterate_fn)
+                requires(
+                    (std::is_invocable_v<FN, T &&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, T &&>>) ||
+                    (std::is_invocable_v<FN, size_t, T &&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, T &&>>)
+                )
+            {
+                return convert_take<ConvertTo, result_array>(start_pos, _size(), std::forward<FN>(iterate_fn));
+            }
 
         /**
          * @brief Converts elements in the array to a different type and takes ownership (move version).
@@ -7293,21 +7389,24 @@ namespace __new_list_array_impl {
          * @param iterate_fn The conversion function to apply to each element.
          * @return A new `result_array` containing the converted elements.
          */
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
-        constexpr [[nodiscard]] result_array convert_take(size_t start_pos, size_t end_pos, FN&& iterate_fn)
-            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
-        {
-            list_array<T, Allocator> tmp = take(start_pos, end_pos);
-            result_array res;
-            res.reserve(tmp.size());
-            if constexpr (std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>) {
-                size_t pos = start_pos;
-                for (auto& i : tmp.range(start_pos, end_pos))
-                    res.push_back(pos++, iterate_fn(std::move(i)));
-            } else
-                for (auto& i : tmp.range(start_pos, end_pos))
-                    res.push_back(iterate_fn(std::move(i)));
-            return res;
+            template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+            constexpr [[nodiscard]] result_array convert_take(size_t start_pos, size_t end_pos, FN&& iterate_fn)
+                requires(
+                    (std::is_invocable_v<FN, T &&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, T &&>>) ||
+                    (std::is_invocable_v<FN, size_t, T &&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, T &&>>)
+                )
+            {
+                list_array<T, Allocator> tmp = take(start_pos, end_pos);
+                result_array res;
+                res.reserve(tmp.size());
+                if constexpr (std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>) {
+                    size_t pos = start_pos;
+                    for (auto& i : tmp.range(start_pos, end_pos))
+                        res.push_back(pos++, std::forward<FN>(iterate_fn)(std::move(i)));
+                } else
+                    for (auto& i : tmp.range(start_pos, end_pos))
+                        res.push_back(iterate_fn(std::move(i)));
+                return res;
         }
 
 /// @}
@@ -8937,6 +9036,48 @@ namespace __new_list_array_impl {
                 return nullptr;
         }
 
+        constexpr [[nodiscard]] T sum() const
+            requires std::is_arithmetic_v<T>
+        {
+            T i = 0;
+            for (T val : *this)
+                i += val;
+            return i;
+        }
+
+        template <class FN>
+        constexpr [[nodiscard]] size_t sum(FN&& converter) const
+            requires std::is_arithmetic_v<std::invoke_result_t<FN, const T&>>
+        {
+            size_t i = 0;
+            for (const T& val : *this)
+                i += converter(val);
+            return i;
+        }
+
+        constexpr [[nodiscard]] T avg() const
+            requires std::is_arithmetic_v<T>
+        {
+            T i = 0;
+            for (T val : *this)
+                i += val;
+            if (i == 0)
+                return 0;
+            return i / size();
+        }
+
+        template <class FN>
+        constexpr [[nodiscard]] size_t avg(FN&& converter) const
+            requires std::is_arithmetic_v<std::invoke_result_t<FN, const T&>>
+        {
+            size_t i = 0;
+            for (const T& val : *this)
+                i += converter(val);
+            if (i == 0)
+                return 0;
+            return i / size();
+        }
+
         /**
          * @brief Returns the maximum value in the array by moving it out.
          *
@@ -9151,7 +9292,7 @@ namespace __new_list_array_impl {
          *
          * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr [[nodiscard]] list_array<T, Allocator>& flip() & {
+        constexpr list_array<T, Allocator>& flip() & {
             return *this = take().flip();
         }
 
@@ -9218,7 +9359,7 @@ namespace __new_list_array_impl {
          * @param value The element to insert.
          * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr list_array<T, Allocator> ordered_insert(const T& value) &&
+        constexpr [[nodiscard]] list_array<T, Allocator> ordered_insert(const T& value) &&
             requires std::totally_ordered<T>
         {
             if (_size() == 0) {
@@ -9235,7 +9376,7 @@ namespace __new_list_array_impl {
          * @param value The element to move into the array.
          * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
-        constexpr list_array<T, Allocator> ordered_insert(T&& value) &&
+        constexpr [[nodiscard]] list_array<T, Allocator> ordered_insert(T&& value) &&
             requires std::totally_ordered<T>
         {
             if (_size() == 0) {
@@ -9246,7 +9387,8 @@ namespace __new_list_array_impl {
             return std::move(*this);
         }
 
-/// @}
+        /// @}
+
 #pragma endregion
 
         /**
@@ -9591,7 +9733,7 @@ namespace std {
         }
     };
 
-    template < class Allocator>
+    template <class Allocator>
     struct hash<bit_list_array<Allocator>> {
         constexpr size_t operator()(const bit_list_array<Allocator>& list) {
             hash<list_array<uint8_t, Allocator>> hasher;
