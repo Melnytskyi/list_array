@@ -582,6 +582,36 @@ namespace __new_list_array_impl {
             size_t relative_index;
             size_t absolute_index;
 
+            template <bool copy_construct, bool make_move = false>
+            constexpr void _fast_load(T* arr, size_t arr_size) {
+                size_t j = relative_index;
+                arr_block<T>* block_tmp = block;
+                size_t block_size = block_tmp->data_size;
+                T* block_arr = block_tmp->data;
+
+                for (size_t i = 0; i < arr_size;) {
+                    for (; i < arr_size && j < block_size; j++) {
+                        if constexpr (make_move) {
+                            if constexpr (copy_construct)
+                                std::construct_at(arr + i++, std::move(block_arr[j]));
+                            else
+                                arr[i++] = std::move(block_arr[j]);
+                        } else {
+                            if constexpr (copy_construct)
+                                std::construct_at(arr + i++, block_arr[j]);
+                            else
+                                arr[i++] = block_arr[j];
+                        }
+                    }
+                    j = 0;
+                    block_tmp = block_tmp->next;
+                    if (!block_tmp)
+                        return;
+                    block_size = block_tmp->data_size;
+                    block_arr = block_tmp->data;
+                }
+            }
+
         public:
             using iterator_category = std::bidirectional_iterator_tag;
             using value_type = T;
@@ -6189,11 +6219,13 @@ namespace __new_list_array_impl {
          * @return A reference to the modified list_array after sorting.
          */
         constexpr list_array<T, Allocator>& sort() & {
+            if (empty())
+                return *this;
             if constexpr (std::is_unsigned<T>::value) {
                 const T& min_val = min();
                 size_t dif = max() - min_val + 1;
                 list_array<size_t> count_arr(dif);
-                list_array<T, Allocator> result(_size);
+                list_array<T, Allocator> result(_size());
                 {
                     size_t i = 0;
                     for (const T& it : *this)
@@ -6216,7 +6248,7 @@ namespace __new_list_array_impl {
                 size_t min_val = normalize(min());
                 size_t dif = normalize(max()) - min_val + 1;
                 list_array<size_t> count_arr(dif, 0);
-                list_array<T, Allocator> result(_size);
+                list_array<T, Allocator> result(_size());
                 {
                     size_t i = 0;
                     for (const T& it : *this)
@@ -6232,10 +6264,10 @@ namespace __new_list_array_impl {
                 }
                 swap(result);
             } else {
-                size_t curr_L_size = _size / 2 + 1;
-                size_t curr_M_size = _size / 2 + 1;
-                T* L = allocator_and_size.allocate(_size / 2 + 1);
-                T* M = allocator_and_size.allocate(_size / 2 + 1);
+                size_t curr_L_size = _size() / 2 + 1;
+                size_t curr_M_size = _size() / 2 + 1;
+                T* L = allocator_and_size.allocate(_size() / 2 + 1);
+                T* M = allocator_and_size.allocate(_size() / 2 + 1);
                 auto fix_size = [&](size_t start, size_t middle, size_t end) {
                     size_t l = middle - start + 1;
                     size_t m = end - middle + 1;
@@ -6271,15 +6303,15 @@ namespace __new_list_array_impl {
                     for (size_t i = 0; i < n2; i++)
                         M[i].~T();
                 };
-                for (size_t b = 2; b < _size; b <<= 1) {
-                    for (size_t i = 0; i < _size; i += b) {
-                        if (i + b > _size)
-                            merge(i, i + ((_size - i) >> 1), _size);
+                for (size_t b = 2; b < _size(); b <<= 1) {
+                    for (size_t i = 0; i < _size(); i += b) {
+                        if (i + b > _size())
+                            merge(i, i + ((_size() - i) >> 1), _size());
                         else
                             merge(i, i + (b >> 1), i + b);
                     }
-                    if (b << 1 > _size)
-                        merge(0, b, _size);
+                    if (b << 1 > _size())
+                        merge(0, b, _size());
                 }
                 auto non_sorted_finder = [&](size_t continue_search) {
                     const auto* check = &operator[](0);
@@ -6294,7 +6326,7 @@ namespace __new_list_array_impl {
                 };
                 size_t err = 0;
                 while ((err = non_sorted_finder(err)))
-                    merge(0, err, _size);
+                    merge(0, err, _size());
                 allocator_and_size.deallocate(L, curr_L_size);
                 allocator_and_size.deallocate(M, curr_M_size);
             }
@@ -6312,10 +6344,12 @@ namespace __new_list_array_impl {
          */
         template <class FN>
         constexpr list_array<T, Allocator>& sort(FN&& compare) & {
-            size_t curr_L_size = _size / 2 + 1;
-            size_t curr_M_size = _size / 2 + 1;
-            T* L = allocator_and_size.allocate(_size / 2 + 1);
-            T* M = allocator_and_size.allocate(_size / 2 + 1);
+            if (empty())
+                return *this;
+            size_t curr_L_size = _size() / 2 + 1;
+            size_t curr_M_size = _size() / 2 + 1;
+            T* L = allocator_and_size.allocate(_size() / 2 + 1);
+            T* M = allocator_and_size.allocate(_size() / 2 + 1);
             auto fix_size = [&L, &M, &curr_L_size, &curr_M_size](size_t start, size_t middle, size_t end) {
                 size_t l = middle - start + 1;
                 size_t m = end - middle + 1;
@@ -6353,13 +6387,13 @@ namespace __new_list_array_impl {
             };
             for (size_t b = 2; b < _size; b <<= 1) {
                 for (size_t i = 0; i < _size; i += b) {
-                    if (i + b > _size)
-                        merge(i, i + ((_size - i) >> 1), _size);
+                    if (i + b > _size())
+                        merge(i, i + ((_size() - i) >> 1), _size());
                     else
                         merge(i, i + (b >> 1), i + b);
                 }
-                if (b << 1 > _size)
-                    merge(0, b, _size);
+                if (b << 1 > _size())
+                    merge(0, b, _size());
             }
             auto non_sorted_finder = [&](size_t continue_search) {
                 const auto* check = &operator[](0);
@@ -6374,7 +6408,7 @@ namespace __new_list_array_impl {
             };
             size_t err = 0;
             while ((err = non_sorted_finder(err)))
-                merge(0, err ? err - 1 : 0, _size);
+                merge(0, err ? err - 1 : 0, _size());
             allocator_and_size.deallocate(L, curr_L_size);
             allocator_and_size.deallocate(M, curr_M_size);
             return *this;
