@@ -2,6 +2,7 @@
 #define NLIST_ARRAY
 #include <algorithm>
 #include <concepts>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <stdexcept>
@@ -50,11 +51,40 @@ namespace __new_list_array_impl {
             conditions_helper<decltype(std::declval<T>().data())>,
             void>> : public std::true_type {};
 
+    template <typename FN, typename>
+    struct is_apply_invocable : std::false_type {};
+
+    template <typename FN, typename... T>
+    struct is_apply_invocable<FN, std::tuple<T...>> : std::bool_constant<std::is_invocable_v<FN, std::add_lvalue_reference_t<T>...> || std::is_invocable_v<FN, std::add_rvalue_reference_t<T>...>> {
+    };
+
+    template <typename FN, typename... T>
+    struct is_apply_invocable<FN, std::pair<T...>> : std::bool_constant<std::is_invocable_v<FN, std::add_lvalue_reference_t<T>...> || std::is_invocable_v<FN, std::add_rvalue_reference_t<T>...>> {
+    };
+
+    template <typename Ret, class FN, typename>
+    struct is_apply_invocable_r : std::false_type {};
+
+    template <typename Ret, typename FN, typename... T>
+    struct is_apply_invocable_r<Ret, FN, std::tuple<T...>> : std::bool_constant<std::is_invocable_r_v<Ret, FN, std::add_lvalue_reference_t<T>...> || std::is_invocable_r_v<Ret, FN, std::add_rvalue_reference_t<T>...>> {
+    };
+
+    template <typename Ret, typename FN, typename... T>
+    struct is_apply_invocable_r<Ret, FN, std::pair<T...>> : std::bool_constant<std::is_invocable_r_v<Ret, FN, std::add_lvalue_reference_t<T>...> || std::is_invocable_r_v<Ret, FN, std::add_rvalue_reference_t<T>...>> {
+    };
+
     template <typename T>
     static inline constexpr bool can_direct_index_v = can_direct_index<T>;
 
     template <typename T>
     static inline constexpr bool is_container_v = is_container<T>::value;
+
+
+    template <typename FN, typename Tupple>
+    static inline constexpr bool is_apply_invocable_v = is_apply_invocable<FN, Tupple>::value;
+
+    template <typename Ret, typename FN, typename Tupple>
+    static inline constexpr bool is_apply_invocable_r_v = is_apply_invocable_r<Ret, FN, Tupple>::value;
 
     template <class Alloc, class T, bool = std::is_empty_v<Alloc> && !std::is_final_v<Alloc>>
     struct compressed_allocator final : private Alloc {
@@ -181,7 +211,7 @@ namespace __new_list_array_impl {
             : size(size), data(new uint8_t[(size + 7) / 8]) {
             size_t compressed_size = (size + 7) / 8;
             for (size_t i = 0; i < compressed_size; i++)
-                data = 0;
+                data[i] = 0;
         }
 
         ~bit_array_helper() {
@@ -484,6 +514,36 @@ namespace __new_list_array_impl {
             arr_block<T>* block;
             size_t relative_index;
             size_t absolute_index;
+
+            template <bool copy_construct, bool make_move = false>
+            constexpr void _fast_load(T* arr, size_t arr_size) {
+                size_t j = relative_index;
+                arr_block<T>* block_tmp = block;
+                size_t block_size = block_tmp->data_size;
+                T* block_arr = block_tmp->data;
+
+                for (size_t i = 0; i < arr_size;) {
+                    for (; i < arr_size && j < block_size; j++) {
+                        if constexpr (make_move) {
+                            if constexpr (copy_construct)
+                                std::construct_at(arr + i++, std::move(block_arr[j]));
+                            else
+                                arr[i++] = std::move(block_arr[j]);
+                        } else {
+                            if constexpr (copy_construct)
+                                std::construct_at(arr + i++, block_arr[j]);
+                            else
+                                arr[i++] = block_arr[j];
+                        }
+                    }
+                    j = 0;
+                    block_tmp = block_tmp->next;
+                    if (!block_tmp)
+                        return;
+                    block_size = block_tmp->data_size;
+                    block_arr = block_tmp->data;
+                }
+            }
 
         public:
             using iterator_category = std::bidirectional_iterator_tag;
@@ -1185,7 +1245,7 @@ namespace __new_list_array_impl {
         constexpr iterator get_iterator_at_index_front(size_t index) noexcept {
             size_t i = index;
             arr_block<T>* block = first_block;
-            if (!last_block)
+            if (!block)
                 return iterator(nullptr, 0, index);
             while (i >= block->data_size) {
                 i -= block->data_size;
@@ -1199,7 +1259,7 @@ namespace __new_list_array_impl {
         constexpr iterator get_iterator_at_index_back(size_t index, size_t absolute_index) noexcept {
             size_t i = index;
             arr_block<T>* block = last_block;
-            if (!last_block)
+            if (!block)
                 return iterator(nullptr, 0, absolute_index);
             if (absolute_index == _size())
                 return iterator(last_block, block->data_size, absolute_index);
@@ -1623,11 +1683,11 @@ namespace __new_list_array_impl {
                     _size() -= erase_size;
                     release_arr_block(begin.block, begin.absolute_index);
                     return;
-                } else if (beginStartConstructed == begin.relative_index) {
+                } else if (beginStartConstructed == begin.relative_index && begin.block == first_block) {
                     for (size_t i = begin.relative_index; i < end.relative_index; ++i)
                         std::destroy_at(begin.block->data + i);
                     _reserved_front += erase_size;
-                } else if (endEndConstructed == end.relative_index) {
+                } else if (endEndConstructed == end.relative_index && begin.block == last_block) {
                     for (size_t i = begin.relative_index; i < end.relative_index; ++i)
                         std::destroy_at(begin.block->data + i);
                     _reserved_back += erase_size;
@@ -1702,16 +1762,18 @@ namespace __new_list_array_impl {
             allocator_and_size.deallocate(begin.block->data, begin.block->data_size);
             begin.block->data = new_arr;
             begin.block->data_size = new_arr_size;
+            hold.release();
         }
 
         template <class FN>
         constexpr void select_for_block_unsafe(FN&& fn, bit_array_helper& selector, const_iterator begin, const_iterator end) noexcept(std::is_nothrow_invocable_r_v<bool, FN, size_t, const T&> || std::is_nothrow_invocable_r_v<bool, FN, const T&>) {
+            size_t count = end.relative_index - begin.relative_index;
             if constexpr (std::is_invocable_r_v<bool, FN, size_t, const T&>) {
-                size_t index_off = begin.absolute_index - begin.relative_index;
-                for (size_t i = begin.relative_index; i < end.relative_index; ++i)
+                size_t index_off = begin.absolute_index - _reserved_front;
+                for (size_t i = 0; i < count; ++i)
                     selector.set(i, fn(i + index_off, *(begin + i)));
             } else
-                for (size_t i = begin.relative_index; i < end.relative_index; ++i)
+                for (size_t i = 0; i < count; ++i)
                     selector.set(i, fn(*(begin + i)));
         }
 
@@ -1756,26 +1818,6 @@ namespace __new_list_array_impl {
 
         constexpr list_array(const Allocator& allocator = Allocator())
             : allocator_and_size(allocator) {}
-
-        template <class Container>
-        constexpr list_array(Container&& cont, const Allocator& allocator = Allocator())
-            requires is_container<Container>::value
-            : allocator_and_size(allocator) {
-            reserve(cont.size());
-            size_t i = 0;
-            for (T& it : cont)
-                push_back(std::move(it));
-        }
-
-        template <class Container>
-        constexpr list_array(const Container& cont, const Allocator& allocator = Allocator())
-            requires is_container<Container>::value
-            : allocator_and_size(allocator) {
-            reserve(cont.size());
-            size_t i = 0;
-            for (const T& it : cont)
-                push_back(it);
-        }
 
         constexpr list_array(std::initializer_list<T> vals, const Allocator& allocator = Allocator())
             : allocator_and_size(allocator) {
@@ -1850,6 +1892,26 @@ namespace __new_list_array_impl {
 
         constexpr list_array(const list_array& copy, size_t start, size_t end, const Allocator& allocator = Allocator())
             : list_array(copy.get_iterator(start), copy.get_iterator(end), end - start, allocator) {}
+
+        template <class Container>
+        constexpr list_array(Container&& cont, const Allocator& allocator = Allocator())
+            requires is_container<Container>::value
+            : allocator_and_size(allocator) {
+            reserve(cont.size());
+            size_t i = 0;
+            for (auto&& it : cont)
+                push_back(T(std::move(it)));
+        }
+
+        template <class Container>
+        constexpr list_array(const Container& cont, const Allocator& allocator = Allocator())
+            requires is_container<Container>::value
+            : allocator_and_size(allocator) {
+            reserve(cont.size());
+            size_t i = 0;
+            for (const auto& it : cont)
+                push_back(it);
+        }
 
 #pragma endregion
 #pragma region operators
@@ -2930,7 +2992,7 @@ namespace __new_list_array_impl {
             remove_if(
                 first_selection,
                 last_selection,
-                [selector, &i]() {
+                [selector, &i](const T&) {
                     return selector.get(i++);
                 }
             );
@@ -2967,7 +3029,7 @@ namespace __new_list_array_impl {
         }
 
         constexpr list_array<T, Allocator>& swap(list_array<T, Allocator>& to_swap) noexcept {
-            if (first_block != first_block) {
+            if (first_block != to_swap.first_block) {
                 arr_block<T>* fb = first_block;
                 arr_block<T>* lb = last_block;
                 size_t rb = _reserved_front;
@@ -3013,12 +3075,12 @@ namespace __new_list_array_impl {
                 return 0;
             if (end_pos > _size())
                 throw std::out_of_range("end_pos out of size limit");
-            T* it = &operator[](start_pos);
+            const T* it = &operator[](start_pos);
             size_t res = 0;
             remove_if(
                 start_pos + 1,
                 end_pos,
-                [&it, &res](T& check_it) {
+                [&it, &res](const T& check_it) {
                     if (check_it == *it)
                         return (bool)++res;
                     it = &check_it;
@@ -3136,14 +3198,13 @@ namespace __new_list_array_impl {
                 i++;
             }
             i = 0;
-            size_t result =
-                remove_if(
-                    start_pos,
-                    end_pos,
-                    [&selector, &i](T& check_it) {
-                        return selector.get(i++);
-                    }
-                );
+            size_t result = remove_if(
+                start_pos,
+                end_pos,
+                [&selector, &i](const T& check_it) {
+                    return selector.get(i++);
+                }
+            );
             return result;
         }
 
@@ -3821,11 +3882,13 @@ namespace __new_list_array_impl {
 #pragma region sort
 
         constexpr list_array<T, Allocator>& sort() & {
+            if (empty())
+                return *this;
             if constexpr (std::is_unsigned<T>::value) {
                 const T& min_val = min();
                 size_t dif = max() - min_val + 1;
                 list_array<size_t> count_arr(dif);
-                list_array<T, Allocator> result(_size);
+                list_array<T, Allocator> result(_size());
                 {
                     size_t i = 0;
                     for (const T& it : *this)
@@ -3848,7 +3911,7 @@ namespace __new_list_array_impl {
                 size_t min_val = normalize(min());
                 size_t dif = normalize(max()) - min_val + 1;
                 list_array<size_t> count_arr(dif, 0);
-                list_array<T, Allocator> result(_size);
+                list_array<T, Allocator> result(_size());
                 {
                     size_t i = 0;
                     for (const T& it : *this)
@@ -3864,10 +3927,10 @@ namespace __new_list_array_impl {
                 }
                 swap(result);
             } else {
-                size_t curr_L_size = _size / 2 + 1;
-                size_t curr_M_size = _size / 2 + 1;
-                T* L = allocator_and_size.allocate(_size / 2 + 1);
-                T* M = allocator_and_size.allocate(_size / 2 + 1);
+                size_t curr_L_size = _size() / 2 + 1;
+                size_t curr_M_size = _size() / 2 + 1;
+                T* L = allocator_and_size.allocate(_size() / 2 + 1);
+                T* M = allocator_and_size.allocate(_size() / 2 + 1);
                 auto fix_size = [&](size_t start, size_t middle, size_t end) {
                     size_t l = middle - start + 1;
                     size_t m = end - middle + 1;
@@ -3903,15 +3966,15 @@ namespace __new_list_array_impl {
                     for (size_t i = 0; i < n2; i++)
                         M[i].~T();
                 };
-                for (size_t b = 2; b < _size; b <<= 1) {
-                    for (size_t i = 0; i < _size; i += b) {
-                        if (i + b > _size)
-                            merge(i, i + ((_size - i) >> 1), _size);
+                for (size_t b = 2; b < _size(); b <<= 1) {
+                    for (size_t i = 0; i < _size(); i += b) {
+                        if (i + b > _size())
+                            merge(i, i + ((_size() - i) >> 1), _size());
                         else
                             merge(i, i + (b >> 1), i + b);
                     }
-                    if (b << 1 > _size)
-                        merge(0, b, _size);
+                    if (b << 1 > _size())
+                        merge(0, b, _size());
                 }
                 auto non_sorted_finder = [&](size_t continue_search) {
                     const auto* check = &operator[](0);
@@ -3926,7 +3989,7 @@ namespace __new_list_array_impl {
                 };
                 size_t err = 0;
                 while ((err = non_sorted_finder(err)))
-                    merge(0, err, _size);
+                    merge(0, err, _size());
                 allocator_and_size.deallocate(L, curr_L_size);
                 allocator_and_size.deallocate(M, curr_M_size);
             }
@@ -3935,10 +3998,12 @@ namespace __new_list_array_impl {
 
         template <class FN>
         constexpr list_array<T, Allocator>& sort(FN&& compare) & {
-            size_t curr_L_size = _size / 2 + 1;
-            size_t curr_M_size = _size / 2 + 1;
-            T* L = allocator_and_size.allocate(_size / 2 + 1);
-            T* M = allocator_and_size.allocate(_size / 2 + 1);
+            if (empty())
+                return *this;
+            size_t curr_L_size = _size() / 2 + 1;
+            size_t curr_M_size = _size() / 2 + 1;
+            T* L = allocator_and_size.allocate(_size() / 2 + 1);
+            T* M = allocator_and_size.allocate(_size() / 2 + 1);
             auto fix_size = [&L, &M, &curr_L_size, &curr_M_size](size_t start, size_t middle, size_t end) {
                 size_t l = middle - start + 1;
                 size_t m = end - middle + 1;
@@ -3976,13 +4041,13 @@ namespace __new_list_array_impl {
             };
             for (size_t b = 2; b < _size; b <<= 1) {
                 for (size_t i = 0; i < _size; i += b) {
-                    if (i + b > _size)
-                        merge(i, i + ((_size - i) >> 1), _size);
+                    if (i + b > _size())
+                        merge(i, i + ((_size() - i) >> 1), _size());
                     else
                         merge(i, i + (b >> 1), i + b);
                 }
-                if (b << 1 > _size)
-                    merge(0, b, _size);
+                if (b << 1 > _size())
+                    merge(0, b, _size());
             }
             auto non_sorted_finder = [&](size_t continue_search) {
                 const auto* check = &operator[](0);
@@ -3997,7 +4062,7 @@ namespace __new_list_array_impl {
             };
             size_t err = 0;
             while ((err = non_sorted_finder(err)))
-                merge(0, err ? err - 1 : 0, _size);
+                merge(0, err ? err - 1 : 0, _size());
             allocator_and_size.deallocate(L, curr_L_size);
             allocator_and_size.deallocate(M, curr_M_size);
             return *this;
@@ -4060,21 +4125,21 @@ namespace __new_list_array_impl {
 
         template <class FN>
         constexpr [[nodiscard]] list_array<T, Allocator> where(FN&& check_fn) const&
-            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&> || is_apply_invocable_r_v<bool, FN, T>)
         {
             return where(0, _size(), std::forward<FN>(check_fn));
         }
 
         template <class FN>
         constexpr [[nodiscard]] list_array<T, Allocator> where(size_t start_pos, FN&& check_fn) const&
-            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&> || is_apply_invocable_r_v<bool, FN, T>)
         {
             return where(start_pos, _size(), std::forward<FN>(check_fn));
         }
 
         template <class FN>
         constexpr [[nodiscard]] list_array<T, Allocator> where(size_t start_pos, size_t end_pos, FN&& check_fn) const&
-            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
+            requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&> || is_apply_invocable_r_v<bool, FN, T>)
         {
             list_array<T, Allocator> res;
             if (start_pos > end_pos)
@@ -4087,6 +4152,10 @@ namespace __new_list_array_impl {
                 for (const_iterator begin = get_iterator(start_pos); begin != end; ++begin)
                     if (check_fn(begin.absolute_index, *begin))
                         res.push_back(*begin);
+            } else if constexpr (is_apply_invocable_r_v<bool, FN, T>) {
+                for (T& i : reverse_range(start_pos, end_pos))
+                    if (std::apply(check_fn, i))
+                        res.push_back(i);
             } else {
                 for (auto& i : range(start_pos, end_pos))
                     if (check_fn(i))
@@ -4099,21 +4168,21 @@ namespace __new_list_array_impl {
 
         template <class FN>
         constexpr [[nodiscard]] list_array<T, Allocator> where(FN&& check_fn) &&
-            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>
+            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&> || is_apply_invocable_r_v<bool, FN, T>
         {
             return take().where(0, _size(), std::forward<FN>(check_fn));
         }
 
         template <class FN>
         constexpr [[nodiscard]] list_array<T, Allocator> where(size_t start_pos, FN&& check_fn) &&
-            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>
+            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&> || is_apply_invocable_r_v<bool, FN, T>
         {
             return take().where(start_pos, _size(), std::forward<FN>(check_fn));
         }
 
         template <class FN>
         constexpr [[nodiscard]] list_array<T, Allocator> where(size_t start_pos, size_t end_pos, FN&& check_fn) &&
-            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>
+            requires std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&> || is_apply_invocable_r_v<bool, FN, T>
         {
             list_array<T, Allocator> res;
             if (start_pos > end_pos)
@@ -4126,6 +4195,10 @@ namespace __new_list_array_impl {
                 for (const_iterator begin = get_iterator(start_pos); begin != end; ++begin)
                     if (check_fn(begin.absolute_index, *begin))
                         res.push_back(std::move(*begin));
+            } else if constexpr (is_apply_invocable_r_v<bool, FN, T>) {
+                for (T& i : reverse_range(start_pos, end_pos))
+                    if (std::apply(check_fn, i))
+                        res.push_back(std::move(i));
             } else {
                 for (auto& i : range(start_pos, end_pos))
                     if (check_fn(i))
@@ -4141,21 +4214,21 @@ namespace __new_list_array_impl {
 
         template <class FN>
         constexpr list_array<T, Allocator>& for_each_reverse(FN&& iterate_fn) &
-            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&> || is_apply_invocable_v<FN, T>
         {
             return for_each_reverse(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class FN>
         constexpr list_array<T, Allocator>& for_each_reverse(size_t start_pos, FN&& iterate_fn) &
-            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&> || is_apply_invocable_v<FN, T>
         {
             return for_each_reverse(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class FN>
         constexpr list_array<T, Allocator>& for_each_reverse(size_t start_pos, size_t end_pos, FN&& iterate_fn) &
-            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&> || is_apply_invocable_v<FN, T>
         {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
@@ -4165,7 +4238,10 @@ namespace __new_list_array_impl {
                 size_t pos = start_pos;
                 for (T& i : reverse_range(start_pos, end_pos))
                     iterate_fn(--pos, i);
-            } else
+            } else if constexpr (is_apply_invocable_v<FN, T>)
+                for (T& i : reverse_range(start_pos, end_pos))
+                    std::apply(iterate_fn, i);
+            else
                 for (T& i : reverse_range(start_pos, end_pos))
                     iterate_fn(i);
 
@@ -4174,21 +4250,21 @@ namespace __new_list_array_impl {
 
         template <class FN>
         constexpr void for_each_reverse(FN&& iterate_fn) &&
-            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&>
+            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&> || is_apply_invocable_v<FN, T>
         {
             std::move(*this).for_each_reverse(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class FN>
         constexpr void for_each_reverse(size_t start_pos, FN&& iterate_fn) &&
-            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&>
+            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&> || is_apply_invocable_v<FN, T>
         {
             std::move(*this).for_each_reverse(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class FN>
         constexpr void for_each_reverse(size_t start_pos, size_t end_pos, FN&& iterate_fn) &&
-            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&>
+            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&> || is_apply_invocable_v<FN, T>
         {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
@@ -4198,28 +4274,31 @@ namespace __new_list_array_impl {
                 size_t pos = start_pos;
                 for (T& i : reverse_range(start_pos, end_pos))
                     iterate_fn(--pos, std::move(i));
-            } else
+            } else if constexpr (is_apply_invocable_v<FN, T>)
+                for (T& i : reverse_range(start_pos, end_pos))
+                    std::apply(iterate_fn, std::move(i));
+            else
                 for (T& i : reverse_range(start_pos, end_pos))
                     iterate_fn(std::move(i));
         }
 
         template <class FN>
         constexpr const list_array<T, Allocator>& for_each_reverse(FN&& iterate_fn) const&
-            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&>
+            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&> || is_apply_invocable_v<FN, T>
         {
             return for_each_reverse(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class FN>
         constexpr const list_array<T, Allocator>& for_each_reverse(size_t start_pos, FN&& iterate_fn) const&
-            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&>
+            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&> || is_apply_invocable_v<FN, T>
         {
             return for_each_reverse(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class FN>
         constexpr const list_array<T, Allocator>& for_each_reverse(size_t start_pos, size_t end_pos, FN&& iterate_fn) const&
-            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&>
+            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&> || is_apply_invocable_v<FN, T>
         {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
@@ -4229,7 +4308,10 @@ namespace __new_list_array_impl {
                 size_t pos = end_pos;
                 for (const T& i : reverse_range(start_pos, end_pos))
                     iterate_fn(--pos, i);
-            } else
+            } else if constexpr (is_apply_invocable_v<FN, T>)
+                for (const T& i : reverse_range(start_pos, end_pos))
+                    std::apply(iterate_fn, i);
+            else
                 for (const T& i : reverse_range(start_pos, end_pos))
                     iterate_fn(i);
             return *this;
@@ -4237,21 +4319,21 @@ namespace __new_list_array_impl {
 
         template <class FN>
         constexpr list_array<T, Allocator>& for_each(FN&& iterate_fn) &
-            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&> || is_apply_invocable_v<FN, T>
         {
             return for_each(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class FN>
         constexpr list_array<T, Allocator>& for_each(size_t start_pos, FN&& iterate_fn) &
-            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&> || is_apply_invocable_v<FN, T>
         {
             return for_each(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class FN>
         constexpr list_array<T, Allocator>& for_each(size_t start_pos, size_t end_pos, FN&& iterate_fn) &
-            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&> || is_apply_invocable_v<FN, T>
         {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
@@ -4261,30 +4343,34 @@ namespace __new_list_array_impl {
                 size_t pos = start_pos;
                 for (T& i : range(start_pos, end_pos))
                     iterate_fn(pos++, i);
-            } else
+            } else if constexpr (is_apply_invocable_v<FN, T>)
+                for (T& i : range(start_pos, end_pos))
+                    std::apply(iterate_fn, i);
+            else
                 for (T& i : range(start_pos, end_pos))
                     iterate_fn(i);
+
 
             return *this;
         }
 
         template <class FN>
         constexpr void for_each(FN&& iterate_fn) &&
-            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&>
+            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&> || is_apply_invocable_v<FN, T>
         {
             std::move(*this).for_each(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class FN>
         constexpr void for_each(size_t start_pos, FN&& iterate_fn) &&
-            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&>
+            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&> || is_apply_invocable_v<FN, T>
         {
             std::move(*this).for_each(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class FN>
         constexpr void for_each(size_t start_pos, size_t end_pos, FN&& iterate_fn) &&
-            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&>
+            requires std::is_invocable_v<FN, T&&> || std::is_invocable_v<FN, size_t, T&&> || is_apply_invocable_v<FN, T>
         {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
@@ -4295,38 +4381,45 @@ namespace __new_list_array_impl {
                 size_t pos = start_pos;
                 for (T& i : range(start_pos, end_pos))
                     iterate_fn(pos++, std::move(i));
-            } else
+            } else if constexpr (is_apply_invocable_v<FN, T>)
+                for (T& i : range(start_pos, end_pos))
+                    std::apply(iterate_fn, std::move(i));
+            else
                 for (T& i : range(start_pos, end_pos))
                     iterate_fn(std::move(i));
         }
 
         template <class FN>
         constexpr const list_array<T, Allocator>& for_each(FN&& iterate_fn) const&
-            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&>
+            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&> || is_apply_invocable_v<FN, T>
         {
             return for_each(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class FN>
         constexpr const list_array<T, Allocator>& for_each(size_t start_pos, FN&& iterate_fn) const&
-            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&>
+            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&> || is_apply_invocable_v<FN, T>
         {
             return for_each(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class FN>
         constexpr const list_array<T, Allocator>& for_each(size_t start_pos, size_t end_pos, FN&& iterate_fn) const&
-            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&>
+            requires std::is_invocable_v<FN, const T&> || std::is_invocable_v<FN, size_t, const T&> || is_apply_invocable_v<FN, T>
         {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
             if (end_pos > _size())
                 throw std::out_of_range("end_pos out of size limit");
+
             if constexpr (std::is_invocable_v<FN, size_t, const T&>) {
                 size_t pos = start_pos;
                 for (const T& i : range(start_pos, end_pos))
                     iterate_fn(pos++, i);
-            } else
+            } else if constexpr (is_apply_invocable_v<FN, T>)
+                for (const T& i : range(start_pos, end_pos))
+                    std::apply(iterate_fn, i);
+            else
                 for (const T& i : range(start_pos, end_pos))
                     iterate_fn(i);
             return *this;
@@ -4337,78 +4430,161 @@ namespace __new_list_array_impl {
 
         template <class FN>
         constexpr list_array<T, Allocator> transform(FN&& iterate_fn) &&
-            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+            requires std::is_invocable_r_v<T, FN, T&&> || std::is_invocable_r_v<T, FN, size_t, T&&> || is_apply_invocable_r_v<T, FN, T>
         {
             return std::move(*this).transform(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class FN>
         constexpr list_array<T, Allocator> transform(size_t start_pos, FN&& iterate_fn) &&
-            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+            requires std::is_invocable_r_v<T, FN, T&&> || std::is_invocable_r_v<T, FN, size_t, T&&> || is_apply_invocable_r_v<T, FN, T>
         {
             return std::move(*this).transform(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class FN>
         constexpr list_array<T, Allocator> transform(size_t start_pos, size_t end_pos, FN&& iterate_fn) &&
-            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+            requires std::is_invocable_r_v<T, FN, T&&> || std::is_invocable_r_v<T, FN, size_t, T&&> || is_apply_invocable_r_v<T, FN, T>
         {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
             if (end_pos > _size())
                 throw std::out_of_range("end_pos out of size limit");
 
-            if constexpr (std::is_invocable_v<FN, size_t, T&>) {
+            if constexpr (std::is_invocable_v<FN, size_t, T&&>) {
                 size_t pos = start_pos;
                 for (T& i : range(start_pos, end_pos))
-                    iterate_fn(pos++, i);
-            } else
+                    i = iterate_fn(pos++, std::move(i));
+            } else if constexpr (is_apply_invocable_v<FN, T>)
                 for (T& i : range(start_pos, end_pos))
-                    iterate_fn(i);
+                    i = std::apply(iterate_fn, std::move(i));
+            else
+                for (T& i : range(start_pos, end_pos))
+                    i = iterate_fn(std::move(i));
             return take(start_pos, end_pos);
         }
 
         template <class FN>
         constexpr list_array<T, Allocator>& transform(FN&& iterate_fn) &
-            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+            requires std::is_invocable_r_v<T, FN, T&&> || std::is_invocable_r_v<T, FN, size_t, T&&> || is_apply_invocable_r_v<T, FN, T>
         {
-            return for_each(0, _size(), std::forward<FN>(iterate_fn));
+            return *this = std::move(*this).transform(iterate_fn);
         }
 
         template <class FN>
         constexpr list_array<T, Allocator>& transform(size_t start_pos, FN&& iterate_fn) &
-            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+            requires std::is_invocable_r_v<T, FN, T&&> || std::is_invocable_r_v<T, FN, size_t, T&&> || is_apply_invocable_r_v<T, FN, T>
         {
-            return for_each(start_pos, _size(), std::forward<FN>(iterate_fn));
+            return *this = std::move(*this).transform(start_pos, iterate_fn);
         }
 
         template <class FN>
         constexpr list_array<T, Allocator>& transform(size_t start_pos, size_t end_pos, FN&& iterate_fn) &
-            requires std::is_invocable_v<FN, T&> || std::is_invocable_v<FN, size_t, T&>
+            requires std::is_invocable_r_v<T, FN, T&&> || std::is_invocable_r_v<T, FN, size_t, T&&> || is_apply_invocable_r_v<T, FN, T>
         {
-            return for_each(start_pos, end_pos, std::forward<FN>(iterate_fn));
+            return *this = std::move(*this).transform(start_pos, end_pos, iterate_fn);
         }
 
 #pragma endregion
 #pragma region convert
 
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert() const&
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            return convert<ConvertTo>(0, _size());
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert(size_t start_pos) const&
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            return convert<ConvertTo>(start_pos, _size());
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert(size_t start_pos, size_t end_pos) const&
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            result_array res;
+            if (end_pos > _size())
+                throw std::out_of_range("end_pos out of size limit");
+            res.reserve_back(end_pos - start_pos);
+            for (auto& i : range(start_pos, end_pos))
+                res.push_back((ConvertTo)(i));
+            return res;
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert() &&
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            return convert_take<ConvertTo, result_array>(0, _size());
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert(size_t start_pos) &&
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            return convert_take<ConvertTo, result_array>(start_pos, _size());
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert(size_t start_pos, size_t end_pos) &&
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            return convert_take<ConvertTo, result_array>(start_pos, end_pos);
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert_take()
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            return convert_take<ConvertTo, result_array>(0, _size());
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert_take(size_t start_pos)
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            return convert_take<ConvertTo, result_array>(start_pos, _size());
+        }
+
+        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>>
+        constexpr [[nodiscard]] result_array convert_take(size_t start_pos, size_t end_pos)
+            requires std::is_convertible_v<ConvertTo, T>
+        {
+            list_array<T, Allocator> tmp = take(start_pos, end_pos);
+            result_array res;
+            res.reserve(tmp.size());
+            for (auto& i : tmp.range(start_pos, end_pos))
+                res.push_back((ConvertTo)(std::move(i)));
+            return res;
+        }
+
         template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
         constexpr [[nodiscard]] result_array convert(FN&& iterate_fn) const&
-            requires std::is_invocable_r_v<ConvertTo, FN, const T&> || std::is_invocable_r_v<ConvertTo, FN, size_t, const T&>
+            requires(
+                (std::is_invocable_v<FN, const T&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, const T&>>) || (std::is_invocable_v<FN, size_t, const T&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, const T&>>)
+            )
         {
             return convert<ConvertTo>(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
         constexpr [[nodiscard]] result_array convert(size_t start_pos, FN&& iterate_fn) const&
-            requires std::is_invocable_r_v<ConvertTo, FN, const T&> || std::is_invocable_r_v<ConvertTo, FN, size_t, const T&>
+            requires(
+                (std::is_invocable_v<FN, const T&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, const T&>>) || (std::is_invocable_v<FN, size_t, const T&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, const T&>>)
+            )
         {
             return convert<ConvertTo>(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
         constexpr [[nodiscard]] result_array convert(size_t start_pos, size_t end_pos, FN&& iterate_fn) const&
-            requires std::is_invocable_r_v<ConvertTo, FN, const T&> || std::is_invocable_r_v<ConvertTo, FN, size_t, const T&>
+            requires(
+                (std::is_invocable_v<FN, const T&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, const T&>>) || (std::is_invocable_v<FN, size_t, const T&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, const T&>>)
+            )
         {
             result_array res;
             if (end_pos > _size())
@@ -4425,43 +4601,44 @@ namespace __new_list_array_impl {
         }
 
         template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
-        constexpr [[nodiscard]] result_array convert(FN&& iterate_fn) &&
-            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
-        {
-            return convert_take<ConvertTo, result_array>(0, _size(), iterate_fn);
-        }
+            constexpr [[nodiscard]] result_array convert(FN&& iterate_fn) && requires((std::is_invocable_v<FN, T&&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, T&&>>) || (std::is_invocable_v<FN, size_t, T&&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, T&&>>)) {
+                return convert_take<ConvertTo, result_array>(0, _size(), std::forward<FN>(iterate_fn));
+            }
 
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
-        constexpr [[nodiscard]] result_array convert(size_t start_pos, FN&& iterate_fn) &&
-            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
-        {
-            return convert_take<ConvertTo, result_array>(start_pos, _size(), iterate_fn);
-        }
 
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
-        constexpr [[nodiscard]] result_array convert(size_t start_pos, size_t end_pos, FN&& iterate_fn) &&
-            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
-        {
-            return convert_take<ConvertTo, result_array>(start_pos, end_pos, iterate_fn);
-        }
+            template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+            constexpr [[nodiscard]] result_array convert(size_t start_pos, FN&& iterate_fn) && requires((std::is_invocable_v<FN, T&&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, T&&>>) || (std::is_invocable_v<FN, size_t, T&&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, T&&>>)) {
+                return convert_take<ConvertTo, result_array>(start_pos, _size(), std::forward<FN>(iterate_fn));
+            }
 
-        template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
-        constexpr [[nodiscard]] result_array convert_take(FN&& iterate_fn)
-            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
+
+            template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+            constexpr [[nodiscard]] result_array convert(size_t start_pos, size_t end_pos, FN&& iterate_fn) && requires((std::is_invocable_v<FN, T&&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, T&&>>) || (std::is_invocable_v<FN, size_t, T&&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, T&&>>)) {
+                return convert_take<ConvertTo, result_array>(start_pos, end_pos, std::forward<FN>(iterate_fn));
+            }
+
+
+            template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
+            constexpr [[nodiscard]] result_array convert_take(FN&& iterate_fn)
+                requires((std::is_invocable_v<FN, T &&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, T &&>>) || (std::is_invocable_v<FN, size_t, T &&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, T &&>>))
         {
-            return convert_take<ConvertTo, result_array>(0, _size(), iterate_fn);
+            return convert_take<ConvertTo, result_array>(0, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
         constexpr [[nodiscard]] result_array convert_take(size_t start_pos, FN&& iterate_fn)
-            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
+            requires(
+                (std::is_invocable_v<FN, T &&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, T &&>>) || (std::is_invocable_v<FN, size_t, T &&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, T &&>>)
+            )
         {
-            return convert_take<ConvertTo, result_array>(start_pos, _size(), iterate_fn);
+            return convert_take<ConvertTo, result_array>(start_pos, _size(), std::forward<FN>(iterate_fn));
         }
 
         template <class ConvertTo, class result_array = list_array<ConvertTo, std::allocator<ConvertTo>>, class FN>
         constexpr [[nodiscard]] result_array convert_take(size_t start_pos, size_t end_pos, FN&& iterate_fn)
-            requires std::is_invocable_r_v<ConvertTo, FN, T&&> || std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>
+            requires(
+                (std::is_invocable_v<FN, T &&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, T &&>>) || (std::is_invocable_v<FN, size_t, T &&> && std::is_convertible_v<ConvertTo, std::invoke_result_t<FN, size_t, T &&>>)
+            )
         {
             list_array<T, Allocator> tmp = take(start_pos, end_pos);
             result_array res;
@@ -4469,7 +4646,7 @@ namespace __new_list_array_impl {
             if constexpr (std::is_invocable_r_v<ConvertTo, FN, size_t, T&&>) {
                 size_t pos = start_pos;
                 for (auto& i : tmp.range(start_pos, end_pos))
-                    res.push_back(pos++, iterate_fn(std::move(i)));
+                    res.push_back(pos++, std::forward<FN>(iterate_fn)(std::move(i)));
             } else
                 for (auto& i : tmp.range(start_pos, end_pos))
                     res.push_back(iterate_fn(std::move(i)));
@@ -5208,6 +5385,7 @@ namespace __new_list_array_impl {
                     arr_block<T>::destroy_block(current, allocator);
                     first_block = manager.get_first();
                     first_block->next = next;
+                    next->prev = first_block;
                     _reserved_front = 0;
                     manager.release();
                     break;
@@ -5229,13 +5407,14 @@ namespace __new_list_array_impl {
                 auto prev = current->prev;
                 if (current->data_size > _reserved_back) {
                     arr_block_manager<T, Allocator> manager(allocator);
-                    auto iter = begin();
+                    auto iter = end() - (current->data_size);
                     manager.add_block(manager.allocate_and_take_from(current->data_size - _reserved_back, iter));
                     prev = current->prev;
                     current->prev = nullptr;
                     arr_block<T>::destroy_block(current, allocator);
                     last_block = manager.get_last();
                     last_block->prev = prev;
+                    prev->next = last_block;
                     _reserved_back = 0;
                     manager.release();
                     break;
@@ -5349,6 +5528,48 @@ namespace __new_list_array_impl {
                 return first_block->data + _reserved_front;
             else
                 return nullptr;
+        }
+
+        constexpr [[nodiscard]] T sum() const
+            requires std::is_arithmetic_v<T>
+        {
+            T i = 0;
+            for (T val : *this)
+                i += val;
+            return i;
+        }
+
+        template <class FN>
+        constexpr [[nodiscard]] size_t sum(FN&& converter) const
+            requires std::is_arithmetic_v<std::invoke_result_t<FN, const T&>>
+        {
+            size_t i = 0;
+            for (const T& val : *this)
+                i += converter(val);
+            return i;
+        }
+
+        constexpr [[nodiscard]] T avg() const
+            requires std::is_arithmetic_v<T>
+        {
+            T i = 0;
+            for (T val : *this)
+                i += val;
+            if (i == 0)
+                return 0;
+            return i / size();
+        }
+
+        template <class FN>
+        constexpr [[nodiscard]] size_t avg(FN&& converter) const
+            requires std::is_arithmetic_v<std::invoke_result_t<FN, const T&>>
+        {
+            size_t i = 0;
+            for (const T& val : *this)
+                i += converter(val);
+            if (i == 0)
+                return 0;
+            return i / size();
         }
 
         constexpr [[nodiscard]] T max() &&
@@ -5471,7 +5692,7 @@ namespace __new_list_array_impl {
 #pragma endregion
 #pragma region flip
 
-        constexpr [[nodiscard]] list_array<T, Allocator>& flip() & {
+        constexpr list_array<T, Allocator>& flip() & {
             return *this = take().flip();
         }
 
@@ -5509,7 +5730,7 @@ namespace __new_list_array_impl {
             return *this;
         }
 
-        constexpr list_array<T, Allocator> ordered_insert(const T& value) &&
+        constexpr [[nodiscard]] list_array<T, Allocator> ordered_insert(const T& value) &&
             requires std::totally_ordered<T>
         {
             if (_size() == 0) {
@@ -5520,7 +5741,7 @@ namespace __new_list_array_impl {
             return std::move(*this);
         }
 
-        constexpr list_array<T, Allocator> ordered_insert(T&& value) &&
+        constexpr [[nodiscard]] list_array<T, Allocator> ordered_insert(T&& value) &&
             requires std::totally_ordered<T>
         {
             if (_size() == 0) {
@@ -5725,6 +5946,10 @@ public:
 
     constexpr bit_list_array& reserve_front(size_t size) {
         arr.reserve_front(size / 8 + (size % 8 ? 1 : 0));
+    }
+
+    constexpr bool need_commit() const {
+        return begin_bit ? true : arr.need_commit();
     }
 
     constexpr bit_list_array& commit() {

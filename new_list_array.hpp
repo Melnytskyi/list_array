@@ -2019,44 +2019,6 @@ namespace __new_list_array_impl {
             : allocator_and_size(allocator) {}
 
         /**
-         * @brief Constructor for the `list_array` class that takes a container as input.
-         *
-         * This constructor creates a `list_array` object by copying or moving elements from the given container `cont`. The elements are moved if `cont` is an rvalue reference, otherwise they are copied.
-         *
-         * @tparam Container The type of the container to copy or move elements from.
-         * @param cont The container object to copy or move elements from.
-         * @param allocator The allocator object to use for memory management (defaults to the default allocator for type `T`).
-         */
-        template <class Container>
-        constexpr list_array(Container&& cont, const Allocator& allocator = Allocator())
-            requires is_container<Container>::value
-            : allocator_and_size(allocator) {
-            reserve(cont.size());
-            size_t i = 0;
-            for (T& it : cont)
-                push_back(std::move(it));
-        }
-
-        /**
-         * @brief Constructor for the `list_array` class that takes a container as input.
-         *
-         * This constructor creates a `list_array` object by copying elements from the given container `cont`.
-         *
-         * @tparam Container The type of the container to copy elements from.
-         * @param cont The container object to copy elements from.
-         * @param allocator The allocator object to use for memory management (defaults to the default allocator for type `T`).
-         */
-        template <class Container>
-        constexpr list_array(const Container& cont, const Allocator& allocator = Allocator())
-            requires is_container<Container>::value
-            : allocator_and_size(allocator) {
-            reserve(cont.size());
-            size_t i = 0;
-            for (const T& it : cont)
-                push_back(it);
-        }
-
-        /**
          * @brief Constructor for the `list_array` class that takes an initializer list as input.
          *
          * This constructor creates a `list_array` object by copying elements from the given initializer list `vals`.
@@ -2235,6 +2197,43 @@ namespace __new_list_array_impl {
         constexpr list_array(const list_array& copy, size_t start, size_t end, const Allocator& allocator = Allocator())
             : list_array(copy.get_iterator(start), copy.get_iterator(end), end - start, allocator) {}
 
+        /**
+         * @brief Constructor for the `list_array` class that takes a container as input.
+         *
+         * This constructor creates a `list_array` object by copying or moving elements from the given container `cont`. The elements are moved if `cont` is an rvalue reference, otherwise they are copied.
+         *
+         * @tparam Container The type of the container to copy or move elements from.
+         * @param cont The container object to copy or move elements from.
+         * @param allocator The allocator object to use for memory management (defaults to the default allocator for type `T`).
+         */
+        template <class Container>
+        constexpr list_array(Container&& cont, const Allocator& allocator = Allocator())
+            requires is_container<Container>::value
+            : allocator_and_size(allocator) {
+            reserve(cont.size());
+            size_t i = 0;
+            for (auto&& it : cont)
+                push_back(T(std::move(it)));
+        }
+
+        /**
+         * @brief Constructor for the `list_array` class that takes a container as input.
+         *
+         * This constructor creates a `list_array` object by copying elements from the given container `cont`.
+         *
+         * @tparam Container The type of the container to copy elements from.
+         * @param cont The container object to copy elements from.
+         * @param allocator The allocator object to use for memory management (defaults to the default allocator for type `T`).
+         */
+        template <class Container>
+        constexpr list_array(const Container& cont, const Allocator& allocator = Allocator())
+            requires is_container<Container>::value
+            : allocator_and_size(allocator) {
+            reserve(cont.size());
+            size_t i = 0;
+            for (const auto& it : cont)
+                push_back(it);
+        }
 /// @}
 #pragma endregion
 #pragma region operators
