@@ -8481,6 +8481,88 @@ namespace __new_list_array_impl {
         }
 
         /**
+         * @brief Compares elements in array and returns true if every element in array is equal
+         *
+         * @tparam AnyAllocator The allocator type of the other `list_array`.
+         * @param other The second array to compare
+         * @return Comparaison result, true if equal
+         */
+        template <class AnyAllocator>
+        [[nodiscard]] constexpr bool operator==(const list_array<T, AnyAllocator>& other) const
+            requires std::equality_comparable<T>
+        {
+            if (size() != other.size())
+                return false;
+
+            auto _begin = begin();
+            auto _end = end();
+            auto _other_begin = other.begin();
+            auto _other_end = other.end();
+
+            while (_begin != _end && _other_begin != _other_end) {
+                if (*_begin != *_other_begin)
+                    return false;
+
+                ++_begin;
+                ++_other_begin;
+            }
+            return true;
+        }
+
+        /**
+         * @brief Compares elements in array and returns true if arrays is differed
+         *
+         * @tparam AnyAllocator The allocator type of the other `list_array`.
+         * @param other The second array to compare
+         * @return Comparaison result, true if not equal
+         */
+        template <class AnyAllocator>
+        [[nodiscard]] constexpr bool operator!=(const list_array<T, AnyAllocator>& other) const
+            requires std::equality_comparable<T>
+        {
+            return !operator==(other);
+        }
+
+        /**
+         * @brief Compares elements in array using `FN` function and returns true if every element in array is equal
+         *
+         * @tparam AnyAllocator The allocator type of the other `list_array`.
+         * @param other The second array to compare
+         * @return Comparaison result, true if equal
+         */
+        template <class AnyAllocator, class FN>
+        [[nodiscard]] constexpr bool equal(const list_array<T, AnyAllocator>& other, FN&& fn) const {
+            if (size() != other.size())
+                return false;
+
+            auto _begin = begin();
+            auto _end = end();
+            auto _other_begin = other.begin();
+            auto _other_end = other.end();
+
+            while (_begin != _end && _other_begin != _other_end) {
+                if (!fn(*_begin, *_other_begin))
+                    return false;
+
+                ++_begin;
+                ++_other_begin;
+            }
+            return true;
+        }
+
+        /**
+         * @brief Compares elements in array using `FN` function and returns true if arrays is differed
+         *
+         * @tparam AnyAllocator The allocator type of the other `list_array`.
+         * @param other The second array to compare
+         * @return Comparaison result, true if not equal
+         */
+        template <class AnyAllocator, class FN>
+        [[nodiscard]] constexpr bool not_equal(const list_array<T, AnyAllocator>& other, FN&& fn) const {
+            return !equal(other, std::move(fn));
+        }
+
+        /**
          * @brief Returns a reference to the element at the specified index.
          *
          * @param index The index of the element to access.
