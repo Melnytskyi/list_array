@@ -1,4 +1,4 @@
-#include "new_list_array.hpp"
+#include "list_array.hpp"
 #include <assert.h>
 #include <chrono>
 #include <iostream>
@@ -6,6 +6,10 @@
 
 inline auto milisec_now_time() {
     return std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now());
+}
+
+std::ostream& operator<<(std::ostream& os, std::chrono::time_point<std::chrono::steady_clock, std::chrono::milliseconds>::duration time) {
+    return os << time.count() << "ms";
 }
 
 void speed_test() {

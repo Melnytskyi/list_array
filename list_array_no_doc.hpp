@@ -1,5 +1,5 @@
-#ifndef NLIST_ARRAY
-#define NLIST_ARRAY
+#ifndef LIST_ARRAY
+#define LIST_ARRAY
 #include <algorithm>
 #include <concepts>
 #include <functional>
@@ -10,10 +10,10 @@
 #include <type_traits>
 #include <utility>
 
-//same as new_list_array but applied regex `\/\*\*([\W\w]*?)\*\/`, `.*\/\/\/.*\n` and `[ ]*\/\/.*`
+//same as list_array.hpp but applied regex `\/\*\*([\W\w]*?)\*\/`, `.*\/\/\/.*\n` and `[ ]*\/\/.*`
 
 
-namespace __new_list_array_impl {
+namespace _list_array_impl {
     template <typename... Ts>
     struct conditions_helper {};
 
@@ -5821,7 +5821,7 @@ namespace __new_list_array_impl {
 }
 
 template <class T, class Allocator = std::allocator<T>>
-using list_array = __new_list_array_impl::list_array<T, Allocator>;
+using list_array = _list_array_impl::list_array<T, Allocator>;
 
 template <class Allocator = std::allocator<uint8_t>>
 struct bit_list_array {
