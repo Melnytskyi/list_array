@@ -2406,9 +2406,9 @@ namespace _list_array_impl {
         template <class... Args>
         constexpr list_array<T, Allocator>& emplace_back(Args&&... args) & {
             if (_reserved_back) {
-                --_reserved_back;
                 std::construct_at(get_direct_element_at_index(_reserved_front + _size()), std::forward<Args>(args)...);
                 ++_size();
+                --_reserved_back;
                 return *this;
             } else if (_reserved_front) {
                 if (first_block->data_size <= _reserved_front) {
@@ -2536,8 +2536,8 @@ namespace _list_array_impl {
         template <class... Args>
         constexpr list_array<T, Allocator>& emplace_front(Args&&... args) & {
             if (_reserved_front) {
-                ++_size();
                 std::construct_at(get_direct_element_at_index(_reserved_front - 1), std::forward<Args>(args)...);
+                ++_size();
                 --_reserved_front;
                 return *this;
             } else if (_reserved_back) {
