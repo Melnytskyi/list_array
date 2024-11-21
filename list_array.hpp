@@ -4515,7 +4515,7 @@ namespace _list_array_impl {
         }
 
         /**
-         * @brief Removes duplicate elements from the array, leaving only unique elements.
+         * @brief Removes duplicate elements from the array, leaving unique elements.
          *
          * This function modifies the array in-place, removing duplicate elements within the entire array. It uses the default equality comparison operator (`==`) to determine duplicates. The order of the remaining unique elements is not guaranteed to be preserved.
          *
@@ -4528,13 +4528,13 @@ namespace _list_array_impl {
         }
 
         /**
-             * @brief Removes duplicate elements from the array, leaving only unique elements, starting from a specified position.
-             *
-             * This function modifies the array in-place, removing duplicate elements starting from the specified `start_pos`. It uses the default equality comparison operator (`==`) to determine duplicates. The order of the remaining unique elements is not guaranteed to be preserved.
-             *
-             * @param start_pos The starting index from which to remove duplicates.
-             * @return The number of elements removed.
-                 */
+         * @brief Removes duplicate elements from the array, leaving only unique elements, starting from a specified position.
+         *
+         * This function modifies the array in-place, removing duplicate elements starting from the specified `start_pos`. It uses the default equality comparison operator (`==`) to determine duplicates. The order of the remaining unique elements is not guaranteed to be preserved.
+         *
+         * @param start_pos The starting index from which to remove duplicates.
+         * @return The number of elements removed.
+         */
         constexpr size_t unify(size_t start_pos) &
             requires std::equality_comparable<T> && std::copy_constructible<T>
         {
@@ -4542,15 +4542,13 @@ namespace _list_array_impl {
         }
 
         /**
-             * @brief Removes duplicate elements from the array, leaving only unique elements.
-             *
-             * This function modifies the array in-place, removing duplicate elements within the specified range (`start_pos` to `end_pos`). It uses the default equality comparison operator (`==`) to determine duplicates. The order of the remaining unique elements is not guaranteed to be preserved.
-             *
-             * @param start_pos The starting index of the range to consider (inclusive).
-             * @param end_pos The ending index of the range to consider (exclusive).
-             * @return The number of elements removed.
-             * @throws std::out_of_range If `end_pos` exceeds the size of the array.
-                 */
+         * @brief Removes duplicate elements from the array, leaving only unique elements.
+         *
+         * @param start_pos The starting index of the range to consider (inclusive).
+         * @param end_pos The ending index of the range to consider (exclusive).
+         * @return The number of elements removed.
+         * @throws std::out_of_range If `end_pos` exceeds the size of the array.
+         */
         constexpr size_t unify(size_t start_pos, size_t end_pos) &
             requires std::equality_comparable<T> && std::copy_constructible<T>
         {
@@ -4565,12 +4563,10 @@ namespace _list_array_impl {
         }
 
         /**
-             * @brief Returns the number of elements with unique values.
-             *
-             * This function iterates over the elements within the entire array and counts the number of elements that have unique values (i.e., they appear only once in the array).
-             *
-             * @return The number of elements with unique values within the entire array.
-                 */
+         * @brief Removes every element that has duplicates from the array, leaving only elements without duplicates.
+         *
+         * @return The number of elements removed.
+         */
         constexpr size_t alone() &
             requires std::equality_comparable<T>
         {
@@ -4578,12 +4574,10 @@ namespace _list_array_impl {
         }
 
         /**
-         * @brief Returns the number of elements with unique values, starting from a specified position.
-         *
-         * This function iterates over the elements starting from the specified `start_pos` and counts the number of elements that have unique values (i.e., they appear only once in the array from that position onwards).
+         * @brief Removes every element that has duplicates from the array, leaving only elements without duplicates.
          *
          * @param start_pos The starting index from which to consider unique values.
-         * @return The number of elements with unique values within the array, starting from `start_pos`.
+         * @return The number of elements removed.
          */
         constexpr size_t alone(size_t start_pos) &
             requires std::equality_comparable<T>
@@ -4592,13 +4586,11 @@ namespace _list_array_impl {
         }
 
         /**
-         * @brief Returns the number of deleted elements.
-         *
-         * This function iterates over the elements within the specified range (`start_pos` to `end_pos`) and counts the number of elements that have unique values (i.e., they appear only once in the range).
+         * @brief Removes every element that has duplicates from the array, leaving only elements without duplicates.
          *
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param end_pos The ending index of the range to consider (exclusive).
-         * @return The number of elements with unique values within the specified range.
+         * @return The number of elements removed.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
         constexpr size_t alone(size_t start_pos, size_t end_pos) &
@@ -4759,13 +4751,13 @@ namespace _list_array_impl {
         }
 
         /**
-             * @brief Removes duplicate elements from the array (move version), leaving only unique elements, starting from a specified position.
-             *
-             * This function is similar to the lvalue reference version of `unify(size_t)`, but it operates on an rvalue reference (temporary) of the `list_array`. It removes duplicate elements starting from the specified `start_pos` and then returns the modified array by value. The order of the remaining unique elements is not guaranteed to be preserved.
-             *
-             * @param start_pos The starting index from which to remove duplicates.
-             * @return A new `list_array` object with all duplicate elements removed, starting from `start_pos`.
-                 */
+         * @brief Removes duplicate elements from the array (move version), leaving only unique elements, starting from a specified position.
+         *
+         * This function is similar to the lvalue reference version of `unify(size_t)`, but it operates on an rvalue reference (temporary) of the `list_array`. It removes duplicate elements starting from the specified `start_pos` and then returns the modified array by value. The order of the remaining unique elements is not guaranteed to be preserved.
+         *
+         * @param start_pos The starting index from which to remove duplicates.
+         * @return A new `list_array` object with all duplicate elements removed, starting from `start_pos`.
+         */
         [[nodiscard]] constexpr list_array<T, Allocator> unify(size_t start_pos) &&
             requires std::equality_comparable<T> && std::copy_constructible<T>
         {
@@ -4774,14 +4766,14 @@ namespace _list_array_impl {
         }
 
         /**
-             * @brief Removes duplicate elements from the array (move version), leaving only unique elements within a specified range.
-             *
-             * This function is similar to the lvalue reference version of `unify(size_t, size_t)`, but it operates on an rvalue reference (temporary) of the `list_array`. It removes duplicate elements within the specified range (`start_pos` to `end_pos`) and then returns the modified array by value. The order of the remaining unique elements is not guaranteed to be preserved.
-             *
-             * @param start_pos The starting index of the range to consider (inclusive).
-             * @param end_pos The ending index of the range to consider (exclusive).
-             * @return A new `list_array` object with all duplicate elements removed within the specified range.
-                 */
+         * @brief Removes duplicate elements from the array (move version), leaving only unique elements within a specified range.
+         *
+         * This function is similar to the lvalue reference version of `unify(size_t, size_t)`, but it operates on an rvalue reference (temporary) of the `list_array`. It removes duplicate elements within the specified range (`start_pos` to `end_pos`) and then returns the modified array by value. The order of the remaining unique elements is not guaranteed to be preserved.
+         *
+         * @param start_pos The starting index of the range to consider (inclusive).
+         * @param end_pos The ending index of the range to consider (exclusive).
+         * @return A new `list_array` object with all duplicate elements removed within the specified range.
+         */
         [[nodiscard]] constexpr list_array<T, Allocator> unify(size_t start_pos, size_t end_pos) &&
             requires std::equality_comparable<T> && std::copy_constructible<T>
         {
@@ -4790,12 +4782,10 @@ namespace _list_array_impl {
         }
 
         /**
-             * @brief Removes elements with unique values from the array (move version).
-             *
-             * This function is similar to the lvalue reference version of `alone`, but it operates on an rvalue reference (temporary) of the `list_array`. It removes elements with unique values within the entire array and then returns the modified array by value.
-             *
-             * @return A new `list_array` object with all elements with unique values removed.
-                 */
+         * @brief Removes every element that has duplicates from the array, leaving only elements without duplicates (move version).
+         * 
+         * @return A new `list_array` object with only unique elements.
+         */
         [[nodiscard]] constexpr list_array<T, Allocator> alone() &&
             requires std::equality_comparable<T>
         {
@@ -4804,12 +4794,10 @@ namespace _list_array_impl {
         }
 
         /**
-         * @brief Removes elements with unique values from the array (move version), starting from a specified position.
-         *
-         * This function is similar to the lvalue reference version of `alone(size_t)`, but it operates on an rvalue reference (temporary) of the `list_array`. It removes elements with unique values starting from the specified `start_pos` and then returns the modified array by value.
+         * @brief Removes every element that has duplicates from the array, leaving only elements without duplicates (move version).
          *
          * @param start_pos The starting index from which to consider unique values.
-         * @return A new `list_array` object with all elements with unique values removed, starting from `start_pos`.
+         * @return A new `list_array` object with only unique elements, starting from `start_pos`.
          */
         [[nodiscard]] constexpr list_array<T, Allocator> alone(size_t start_pos) &&
             requires std::equality_comparable<T>
@@ -4819,13 +4807,11 @@ namespace _list_array_impl {
         }
 
         /**
-         * @brief Removes elements with unique values from the array (move version) within a specified range.
-         *
-         * This function is similar to the lvalue reference version of `alone(size_t, size_t)`, but it operates on an rvalue reference (temporary) of the `list_array`. It removes elements with unique values within the specified range (`start_pos` to `end_pos`) and then returns the modified array by value.
+         * @brief Removes every element that has duplicates from the array, leaving only elements without duplicates (move version).
          *
          * @param start_pos The starting index of the range to consider (inclusive).
          * @param end_pos The ending index of the range to consider (exclusive).
-         * @return A new `list_array` object with all elements with unique values removed within the specified range.
+         * @return A new `list_array` object with only unique elements within the specified range.
          */
         [[nodiscard]] constexpr list_array<T, Allocator> alone(size_t start_pos, size_t end_pos) &&
             requires std::equality_comparable<T>
