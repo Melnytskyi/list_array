@@ -2939,21 +2939,21 @@ namespace _list_array_impl {
 
         template <class FN>
         [[nodiscard]] constexpr list_array<T, Allocator> take(FN&& select_fn)
-            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+            requires(std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>)
         {
             return take(std::forward<FN>(select_fn), 0, _size());
         }
 
         template <class FN>
         [[nodiscard]] constexpr list_array<T, Allocator> take(size_t start_pos, FN&& select_fn)
-            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+            requires(std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>)
         {
             return take(std::forward<FN>(select_fn), start_pos, _size());
         }
 
         template <class FN>
         [[nodiscard]] constexpr list_array<T, Allocator> take(size_t start_pos, size_t end_pos, FN&& select_fn)
-            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+            requires(std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>)
         {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
@@ -3151,6 +3151,34 @@ namespace _list_array_impl {
             return tmp_arr._size() - _size();
         }
 
+        template <class FN>
+        constexpr size_t unify(FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            return unify(0, _size(), std::forward<FN>(compare_func));
+        }
+
+        template <class FN>
+        constexpr size_t unify(size_t start_pos, FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            return unify(start_pos, _size(), std::forward<FN>(compare_func));
+        }
+
+        template <class FN>
+        constexpr size_t unify(size_t start_pos, size_t end_pos, FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            list_array<T, Allocator> tmp_arr;
+            tmp_arr.reserve_back((_size() >> 2) + 1);
+            for (T& it : range(start_pos, end_pos))
+                if (!tmp_arr.contains_one([&it, &compare_func](const T& check_it) { return compare_func(it, check_it); }))
+                    tmp_arr.push_back(it);
+            tmp_arr.shrink_to_fit();
+            swap(tmp_arr);
+            return tmp_arr._size() - _size();
+        }
+
         constexpr size_t alone() &
             requires std::equality_comparable<T>
         {
@@ -3187,6 +3215,65 @@ namespace _list_array_impl {
                         continue;
                     }
                     if (it == cmp_it) {
+                        is_unique = false;
+                        selector.set(j, true);
+                    }
+                    j++;
+                }
+                if (!is_unique)
+                    selector.set(i, true);
+                i++;
+            }
+            i = 0;
+            size_t result = remove_if(
+                start_pos,
+                end_pos,
+                [&selector, &i](const T& check_it) {
+                    return selector.get(i++);
+                }
+            );
+            return result;
+        }
+
+        template <class FN>
+        constexpr size_t alone(FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            return alone(0, _size());
+        }
+
+        template <class FN>
+        constexpr size_t alone(size_t start_pos, FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            return alone(start_pos, _size());
+        }
+
+        template <class FN>
+        constexpr size_t alone(size_t start_pos, size_t end_pos, FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            if (start_pos > end_pos)
+                std::swap(start_pos, end_pos);
+            if (start_pos + 1 >= end_pos)
+                return 0;
+            if (end_pos > _size())
+                throw std::out_of_range("end_pos out of size limit");
+            bit_array_helper selector(end_pos - start_pos);
+            size_t i = 0;
+            for (T& it : range(start_pos, end_pos)) {
+                if (selector.get(i)) {
+                    i++;
+                    continue;
+                }
+                size_t j = 0;
+                bool is_unique = true;
+                for (T& cmp_it : range(start_pos, end_pos)) {
+                    if (i == j) {
+                        j++;
+                        continue;
+                    }
+                    if (compare_func(it, cmp_it)) {
                         is_unique = false;
                         selector.set(j, true);
                     }
@@ -3273,6 +3360,30 @@ namespace _list_array_impl {
             return std::move(*this);
         }
 
+        template <class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> unify(FN&& compare_func) &&
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            unify(0, _size(), std::forward<FN>(compare_func));
+            return std::move(*this);
+        }
+
+        template <class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> unify(size_t start_pos, FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            unify(start_pos, _size(), std::forward<FN>(compare_func));
+            return std::move(*this);
+        }
+
+        template <class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> unify(size_t start_pos, size_t end_pos, FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            unify(start_pos, end_pos, std::forward<FN>(compare_func));
+            return std::move(*this);
+        }
+
         [[nodiscard]] constexpr list_array<T, Allocator> alone() &&
             requires std::equality_comparable<T>
         {
@@ -3291,6 +3402,30 @@ namespace _list_array_impl {
             requires std::equality_comparable<T>
         {
             alone(start_pos, end_pos);
+            return std::move(*this);
+        }
+
+        template <class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> alone(FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            alone(0, _size(), std::forward<FN>(compare_func));
+            return std::move(*this);
+        }
+
+        template <class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> alone(size_t start_pos, FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            alone(start_pos, _size(), std::forward<FN>(compare_func));
+            return std::move(*this);
+        }
+
+        template <class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> alone(size_t start_pos, size_t end_pos, FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            alone(start_pos, end_pos, std::forward<FN>(compare_func));
             return std::move(*this);
         }
 
@@ -5755,6 +5890,30 @@ namespace _list_array_impl {
             move_container.resize(size());
             std::move(*this).for_each([&move_container](size_t i, T&& it) {
                 move_container[i] = std::move(it);
+            });
+            return move_container;
+        }
+
+        template <class Container>
+        [[nodiscard]] constexpr Container to_set() const&
+            requires is_container_v<Container>
+        {
+            Container copy_container;
+            copy_container.reserve(size());
+            for_each([&copy_container](size_t i, const T& it) {
+                copy_container.emplace(it);
+            });
+            return copy_container;
+        }
+
+        template <class Container>
+        [[nodiscard]] constexpr Container to_set() &&
+            requires is_container_v<Container>
+        {
+            Container move_container;
+            move_container.reserve(size());
+            std::move(*this).for_each([&move_container](size_t i, T&& it) {
+                move_container.emplace(std::move(it));
             });
             return move_container;
         }

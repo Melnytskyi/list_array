@@ -4215,9 +4215,9 @@ namespace _list_array_impl {
          */
         template <class FN>
         [[nodiscard]] constexpr list_array<T, Allocator> take(FN&& select_fn)
-            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+            requires(std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>)
         {
-            return take(std::forward<FN>(select_fn), 0, _size());
+            return take(0, _size(), std::forward<FN>(select_fn));
         }
 
         /**
@@ -4232,9 +4232,9 @@ namespace _list_array_impl {
          */
         template <class FN>
         [[nodiscard]] constexpr list_array<T, Allocator> take(size_t start_pos, FN&& select_fn)
-            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+            requires(std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>)
         {
-            return take(std::forward<FN>(select_fn), start_pos, _size());
+            return take(start_pos, _size(), std::forward<FN>(select_fn));
         }
 
         /**
@@ -4252,7 +4252,7 @@ namespace _list_array_impl {
          */
         template <class FN>
         [[nodiscard]] constexpr list_array<T, Allocator> take(size_t start_pos, size_t end_pos, FN&& select_fn)
-            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+            requires(std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>)
         {
             if (start_pos > end_pos)
                 throw std::invalid_argument("end_pos must be bigger than start_pos");
@@ -4517,7 +4517,7 @@ namespace _list_array_impl {
         /**
          * @brief Removes duplicate elements from the array, leaving unique elements.
          *
-         * This function modifies the array in-place, removing duplicate elements within the entire array. It uses the default equality comparison operator (`==`) to determine duplicates. The order of the remaining unique elements is not guaranteed to be preserved.
+         * This function removes duplicate elements within the entire array. It uses the default equality comparison operator (`==`) to determine duplicates. The order of the remaining unique elements is not guaranteed to be preserved.
          *
          * @return The number of elements removed.
          */
@@ -4530,7 +4530,7 @@ namespace _list_array_impl {
         /**
          * @brief Removes duplicate elements from the array, leaving only unique elements, starting from a specified position.
          *
-         * This function modifies the array in-place, removing duplicate elements starting from the specified `start_pos`. It uses the default equality comparison operator (`==`) to determine duplicates. The order of the remaining unique elements is not guaranteed to be preserved.
+         * This function removes duplicate elements starting from the specified `start_pos`. It uses the default equality comparison operator (`==`) to determine duplicates. The order of the remaining unique elements is not guaranteed to be preserved.
          *
          * @param start_pos The starting index from which to remove duplicates.
          * @return The number of elements removed.
@@ -4556,6 +4556,63 @@ namespace _list_array_impl {
             tmp_arr.reserve_back((_size() >> 2) + 1);
             for (T& it : range(start_pos, end_pos))
                 if (!tmp_arr.contains(it))
+                    tmp_arr.push_back(it);
+            tmp_arr.shrink_to_fit();
+            swap(tmp_arr);
+            return tmp_arr._size() - _size();
+        }
+
+        /**
+         * @brief Removes duplicate elements from the array, leaving unique elements.
+         *
+         * This function removes duplicate elements within the entire array. It uses the default equality comparison operator (`==`) to determine duplicates. The order of the remaining unique elements is not guaranteed to be preserved.
+         *
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @param compare_func The custom comparison function to use.
+         * @return The number of elements removed.
+         */
+        template <class FN>
+        constexpr size_t unify(FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            return unify(0, _size(), std::forward<FN>(compare_func));
+        }
+
+        /**
+         * @brief Removes duplicate elements from the array, leaving only unique elements, starting from a specified position.
+         *
+         * This function removes duplicate elements starting from the specified `start_pos`. It uses the default equality comparison operator (`==`) to determine duplicates. The order of the remaining unique elements is not guaranteed to be preserved.
+         *
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @param start_pos The starting index from which to remove duplicates.
+         * @param compare_func The custom comparison function to use.
+         * @return The number of elements removed.
+         */
+        template <class FN>
+        constexpr size_t unify(size_t start_pos, FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            return unify(start_pos, _size(), std::forward<FN>(compare_func));
+        }
+
+        /**
+         * @brief Removes duplicate elements from the array, leaving only unique elements.
+         *
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @param start_pos The starting index of the range to consider (inclusive).
+         * @param end_pos The ending index of the range to consider (exclusive).
+         * @param compare_func The custom comparison function to use.
+         * @return The number of elements removed.
+         * @throws std::out_of_range If `end_pos` exceeds the size of the array.
+         */
+        template <class FN>
+        constexpr size_t unify(size_t start_pos, size_t end_pos, FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            list_array<T, Allocator> tmp_arr;
+            tmp_arr.reserve_back((_size() >> 2) + 1);
+            for (T& it : range(start_pos, end_pos))
+                if (!tmp_arr.contains_one([&it, &compare_func](const T& check_it) { return compare_func(it, check_it); }))
                     tmp_arr.push_back(it);
             tmp_arr.shrink_to_fit();
             swap(tmp_arr);
@@ -4617,6 +4674,90 @@ namespace _list_array_impl {
                         continue;
                     }
                     if (it == cmp_it) {
+                        is_unique = false;
+                        selector.set(j, true);
+                    }
+                    j++;
+                }
+                if (!is_unique)
+                    selector.set(i, true);
+                i++;
+            }
+            i = 0;
+            size_t result = remove_if(
+                start_pos,
+                end_pos,
+                [&selector, &i](const T& check_it) {
+                    return selector.get(i++);
+                }
+            );
+            return result;
+        }
+
+        /**
+         * @brief Removes every element that has duplicates from the array, leaving only elements without duplicates.
+         *
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @param compare_func The custom comparison function to use.
+         * @return The number of elements removed.
+         */
+        template <class FN>
+        constexpr size_t alone(FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            return alone(0, _size());
+        }
+
+        /**
+         * @brief Removes every element that has duplicates from the array, leaving only elements without duplicates.
+         *
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @param start_pos The starting index from which to consider unique values.
+         * @param compare_func The custom comparison function to use.
+         * @return The number of elements removed.
+         */
+        template <class FN>
+        constexpr size_t alone(size_t start_pos, FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            return alone(start_pos, _size());
+        }
+
+        /**
+         * @brief Removes every element that has duplicates from the array, leaving only elements without duplicates.
+         * 
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @param start_pos The starting index of the range to consider (inclusive).
+         * @param end_pos The ending index of the range to consider (exclusive).
+         * @param compare_func The custom comparison function to use.
+         * @return The number of elements removed.
+         * @throws std::out_of_range If `end_pos` exceeds the size of the array.
+         */
+        template <class FN>
+        constexpr size_t alone(size_t start_pos, size_t end_pos, FN&& compare_func) &
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            if (start_pos > end_pos)
+                std::swap(start_pos, end_pos);
+            if (start_pos + 1 >= end_pos)
+                return 0;
+            if (end_pos > _size())
+                throw std::out_of_range("end_pos out of size limit");
+            bit_array_helper selector(end_pos - start_pos);
+            size_t i = 0;
+            for (T& it : range(start_pos, end_pos)) {
+                if (selector.get(i)) {
+                    i++;
+                    continue;
+                }
+                size_t j = 0;
+                bool is_unique = true;
+                for (T& cmp_it : range(start_pos, end_pos)) {
+                    if (i == j) {
+                        j++;
+                        continue;
+                    }
+                    if (compare_func(it, cmp_it)) {
                         is_unique = false;
                         selector.set(j, true);
                     }
@@ -4782,6 +4923,58 @@ namespace _list_array_impl {
         }
 
         /**
+         * @brief Removes duplicate elements from the array, leaving unique elements (move version).
+         *
+         * This function removes duplicate elements within the entire array. It uses the default equality comparison operator (`==`) to determine duplicates. The order of the remaining unique elements is not guaranteed to be preserved.
+         *
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @param compare_func The custom comparison function to use.
+         * @return A new `list_array` object with all duplicate elements removed.
+         */
+        template <class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> unify(FN&& compare_func) &&
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            unify(0, _size(), std::forward<FN>(compare_func));
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Removes duplicate elements from the array, leaving only unique elements, starting from a specified position (move version).
+         *
+         * This function removes duplicate elements starting from the specified `start_pos`. It uses the default equality comparison operator (`==`) to determine duplicates. The order of the remaining unique elements is not guaranteed to be preserved.
+         *
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @param start_pos The starting index from which to remove duplicates.
+         * @param compare_func The custom comparison function to use.
+         * @return A new `list_array` object with all duplicate elements removed.
+         */
+        template <class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> unify(size_t start_pos, FN&& compare_func) &&
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            unify(start_pos, _size(), std::forward<FN>(compare_func));
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Removes duplicate elements from the array, leaving only unique elements (move version).
+         *
+         * @param start_pos The starting index of the range to consider (inclusive).
+         * @param end_pos The ending index of the range to consider (exclusive).
+         * @param compare_func The custom comparison function to use.
+         * @return A new `list_array` object with all duplicate elements removed.
+         * @throws std::out_of_range If `end_pos` exceeds the size of the array.
+         */
+        template <class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> unify(size_t start_pos, size_t end_pos, FN&& compare_func) &&
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            unify(start_pos, end_pos, std::forward<FN>(compare_func));
+            return std::move(*this);
+        }
+
+        /**
          * @brief Removes every element that has duplicates from the array, leaving only elements without duplicates (move version).
          * 
          * @return A new `list_array` object with only unique elements.
@@ -4817,6 +5010,55 @@ namespace _list_array_impl {
             requires std::equality_comparable<T>
         {
             alone(start_pos, end_pos);
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Removes every element that has duplicates from the array, leaving only elements without duplicates (move version).
+         *
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @param compare_func The custom comparison function to use.
+         * @return A new `list_array` object with only unique elements within the specified range.
+         */
+        template <class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> alone(FN&& compare_func) &&
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            alone(0, _size(), std::forward<FN>(compare_func));
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Removes every element that has duplicates from the array, leaving only elements without duplicates (move version).
+         *
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @param start_pos The starting index from which to consider unique values.
+         * @param compare_func The custom comparison function to use.
+         * @return A new `list_array` object with only unique elements within the specified range.
+         */
+        template <class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> alone(size_t start_pos, FN&& compare_func) &&
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            alone(start_pos, _size(), std::forward<FN>(compare_func));
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Removes every element that has duplicates from the array, leaving only elements without duplicates (move version).
+         * 
+         * @tparam FN The type of the comparison function. It should take two const references to `T` and return `true` if they are considered duplicates, `false` otherwise.
+         * @param start_pos The starting index of the range to consider (inclusive).
+         * @param end_pos The ending index of the range to consider (exclusive).
+         * @param compare_func The custom comparison function to use.
+         * @return A new `list_array` object with only unique elements within the specified range.
+         * @throws std::out_of_range If `end_pos` exceeds the size of the array.
+         */
+        template <class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> alone(size_t start_pos, size_t end_pos, FN&& compare_func) &&
+            requires std::is_invocable_r_v<bool, FN, const T&, const T&>
+        {
+            alone(start_pos, end_pos, std::forward<FN>(compare_func));
             return std::move(*this);
         }
 
@@ -9438,6 +9680,45 @@ namespace _list_array_impl {
             move_container.resize(size());
             std::move(*this).for_each([&move_container](size_t i, T&& it) {
                 move_container[i] = std::move(it);
+            });
+            return move_container;
+        }
+
+        /**
+         * @brief Converts the list_array into a specified `Container` set type.
+         *
+         * Copies elements from the list_array into a new `Container` set. 
+         * This is the const reference version.
+         *
+         * @return Container A new set container of the specified type, filled with the list_array's elements.
+         */
+        template <class Container>
+        [[nodiscard]] constexpr Container to_set() const&
+            requires is_container_v<Container>
+        {
+            Container copy_container;
+            copy_container.reserve(size());
+            for_each([&copy_container](size_t i, const T& it) {
+                copy_container.emplace(it);
+            });
+            return copy_container;
+        }
+
+        /**
+         * @brief Converts the list_array into a specified `Container` set type (move version).
+         *
+         * Moves elements from the list_array into a new `Container` set.
+         *
+         * @return Container A new set container of the specified type, filled with the list_array's elements.
+         */
+        template <class Container>
+        [[nodiscard]] constexpr Container to_set() &&
+            requires is_container_v<Container>
+        {
+            Container move_container;
+            move_container.reserve(size());
+            std::move(*this).for_each([&move_container](size_t i, T&& it) {
+                move_container.emplace(std::move(it));
             });
             return move_container;
         }
