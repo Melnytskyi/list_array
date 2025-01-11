@@ -2398,6 +2398,18 @@ namespace _list_array_impl {
         }
 
         /**
+        * @brief Adds a copy of the value to the end of the arrays.
+        *
+        * @param value The value to be added.
+        */
+        template <class AnotherT>
+        constexpr list_array<T, Allocator>& push_back_for(const AnotherT& value) & {
+            for (auto& it : *this)
+                it.push_back(value);
+            return *this;
+        }
+
+        /**
          * @brief Constructs an element in-place at the end of the array.
          * 
          * @tparam Args The types of the arguments to be forwarded to the constructor of T.
@@ -2528,6 +2540,18 @@ namespace _list_array_impl {
         }
 
         /**
+        * @brief Adds a copy of the value to the beginning of the arrays.
+        *
+        * @param value The value to be added.
+        */
+        template <class AnotherT>
+        constexpr list_array<T, Allocator>& push_front_for(const AnotherT& value) & {
+            for (auto& it : *this)
+                it.push_front(value);
+            return *this;
+        }
+
+        /**
          * @brief Constructs an element in-place at the beginning of the array.
          * 
          * @tparam Args The types of the arguments to be forwarded to the constructor of T.
@@ -2554,7 +2578,7 @@ namespace _list_array_impl {
         * @brief Adds a copy of the value to the end of the array.
         *
         * @param value The value to be added.
-        * @return list_array<T, Allocator> A new list_array with the last element removed.
+        * @return list_array<T, Allocator> A new list_array with the last element placed.
         */
         [[nodiscard]] constexpr list_array<T, Allocator> push_back(const T& value) && {
             push_back(value);
@@ -2565,7 +2589,7 @@ namespace _list_array_impl {
          * @brief Adds a value to the end of the array using move semantics.
          * 
          * @param value The value to be moved into the array.
-         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
          */
         [[nodiscard]] constexpr list_array<T, Allocator> push_back(T&& value) && {
             push_back(std::move(value));
@@ -2577,7 +2601,7 @@ namespace _list_array_impl {
          * 
          * @tparam AnyAllocator The allocator type of the other `list_array`.
          * @param alloc The other `list_array` whose elements will be copied.
-         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
          */
         template <class AnyAllocator>
         [[nodiscard]] constexpr list_array<T, Allocator> push_back(const list_array<T, AnyAllocator>& alloc) && {
@@ -2590,7 +2614,7 @@ namespace _list_array_impl {
          * 
          * @tparam AnyAllocator The allocator type of the other `list_array`.
          * @param alloc The other `list_array` whose elements will be moved.
-         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
          */
         template <class AnyAllocator>
         [[nodiscard]] constexpr list_array<T, Allocator> push_back(list_array<T, AnyAllocator>&& alloc) && {
@@ -2603,10 +2627,10 @@ namespace _list_array_impl {
          * 
          * @param begin An iterator to the beginning of the range.
          * @param end An iterator to the end of the range.
-         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
          */
         [[nodiscard]] constexpr list_array<T, Allocator> push_back(const T* begin, const T* end) && {
-            push_front(begin, end);
+            push_back(begin, end);
             return std::move(*this);
         }
 
@@ -2615,7 +2639,7 @@ namespace _list_array_impl {
          * 
          * @tparam N The size of the C-style array.
          * @param arr The C-style array to append.
-         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
          */
         template <size_t N>
         [[nodiscard]] constexpr list_array<T, Allocator> push_back(const T (&arr)[N]) && {
@@ -2628,10 +2652,23 @@ namespace _list_array_impl {
          * 
          * @param arr A pointer to the beginning of the array.
          * @param size The number of elements to append.
-         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
          */
         [[nodiscard]] constexpr list_array<T, Allocator> push_back(const T* arr, size_t size) && {
             push_back(arr, arr + size);
+            return std::move(*this);
+        }
+
+        /**
+        * @brief Adds a copy of the value to the end of the arrays.
+        *
+        * @param value The value to be added.
+        * @return list_array<T, Allocator> A new list_array with the last element placed.
+        */
+        template <class AnotherT>
+        [[nodiscard]] constexpr list_array<T, Allocator> push_back_for(const AnotherT& value) && {
+            for (auto& it : *this)
+                it.push_back(value);
             return std::move(*this);
         }
 
@@ -2640,7 +2677,7 @@ namespace _list_array_impl {
          * 
          * @tparam Args The types of the arguments to be forwarded to the constructor of T.
          * @param args The arguments to be forwarded to the constructor of T.
-         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
          */
         template <class... Args>
         [[nodiscard]] constexpr list_array<T, Allocator> emplace_back(Args&&... args) && {
@@ -2652,7 +2689,7 @@ namespace _list_array_impl {
          * @brief Adds a copy of the value to the beginning of the array.
          * 
          * @param value The value to be added.
-         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
          */
         [[nodiscard]] constexpr list_array<T, Allocator> push_front(const T& value) && {
             push_front(value);
@@ -2663,7 +2700,7 @@ namespace _list_array_impl {
          * @brief Adds a value to the beginning of the array using move semantics.
          * 
          * @param value The value to be moved into the array.
-         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
          */
         [[nodiscard]] constexpr list_array<T, Allocator> push_front(T&& value) && {
             push_front(std::move(value));
@@ -2675,7 +2712,7 @@ namespace _list_array_impl {
          * 
          * @tparam AnyAllocator The allocator type of the other `list_array`.
          * @param alloc The other `list_array` whose elements will be copied.
-         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
          */
         template <class AnyAllocator>
         [[nodiscard]] constexpr list_array<T, Allocator> push_front(const list_array<T, AnyAllocator>& alloc) && {
@@ -2688,7 +2725,7 @@ namespace _list_array_impl {
          * 
          * @tparam AnyAllocator The allocator type of the other `list_array`.
          * @param alloc The other `list_array` whose elements will be moved.
-         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
          */
         template <class AnyAllocator>
         [[nodiscard]] constexpr list_array<T, Allocator> push_front(list_array<T, AnyAllocator>&& alloc) && {
@@ -2701,7 +2738,7 @@ namespace _list_array_impl {
          * 
          * @param begin An iterator to the beginning of the range.
          * @param end An iterator to the end of the range.
-         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
          */
         [[nodiscard]] constexpr list_array<T, Allocator> push_front(const T* begin, const T* end) && {
             push_front(begin, end);
@@ -2713,7 +2750,7 @@ namespace _list_array_impl {
          * 
          * @tparam N The size of the C-style array.
          * @param arr The C-style array to append.
-         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
          */
         template <size_t N>
         [[nodiscard]] constexpr list_array<T, Allocator> push_front(const T (&arr)[N]) && {
@@ -2726,10 +2763,23 @@ namespace _list_array_impl {
          * 
          * @param arr A pointer to the beginning of the array.
          * @param size The number of elements to append.
-         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
          */
         [[nodiscard]] constexpr list_array<T, Allocator> push_front(const T* arr, size_t size) && {
             push_front(arr, arr + size);
+            return std::move(*this);
+        }
+
+        /**
+         * @brief Adds a copy of the value to the beginning of the arrays.
+         * 
+         * @param value The value to be added.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
+        */
+        template <class AnotherT>
+        [[nodiscard]] constexpr list_array<T, Allocator> push_front_for(const AnotherT& value) && {
+            for (auto& it : *this)
+                it.push_front(value);
             return std::move(*this);
         }
 
@@ -2738,7 +2788,7 @@ namespace _list_array_impl {
          * 
          * @tparam Args The types of the arguments to be forwarded to the constructor of T.
          * @param args The arguments to be forwarded to the constructor of T.
-         * @return list_array<T, Allocator> A new list_array with the last element removed.
+         * @return list_array<T, Allocator> A new list_array with the last element placed.
          */
         template <class... Args>
         [[nodiscard]] constexpr list_array<T, Allocator> emplace_front(Args&&... args) && {
@@ -5526,7 +5576,7 @@ namespace _list_array_impl {
          * @return A new `list_array` object containing the joined elements.
          */
         template <class FN = bool (*)(const T&)>
-        constexpr list_array<T, Allocator> join(const T& insert_item, FN&& where_join) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T& insert_item, FN&& where_join) &&
             requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
             return std::move(*this).join(insert_item, 0, _size(), std::forward<FN>(where_join));
@@ -5545,7 +5595,7 @@ namespace _list_array_impl {
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
          */
         template <class FN>
-        constexpr list_array<T, Allocator> join(const T& insert_item, size_t start_pos, FN&& where_join) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T& insert_item, size_t start_pos, FN&& where_join) &&
             requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
             return std::move(*this).join(insert_item, start_pos, _size(), std::forward<FN>(where_join));
@@ -5566,7 +5616,7 @@ namespace _list_array_impl {
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
         template <class FN>
-        constexpr list_array<T, Allocator> join(const T& insert_item, size_t start_pos, size_t end_pos, FN&& where_join) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T& insert_item, size_t start_pos, size_t end_pos, FN&& where_join) &&
             requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
             if (start_pos > end_pos)
@@ -5608,7 +5658,7 @@ namespace _list_array_impl {
          * @return A new `list_array` object containing the joined elements.
          */
         template <class AnyAllocator, class FN = bool (*)(const T&)>
-        constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items, FN&& where_join) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items, FN&& where_join) &&
             requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
             return std::move(*this).join(insert_items, 0, _size(), std::forward<FN>(where_join));
@@ -5629,7 +5679,7 @@ namespace _list_array_impl {
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
          */
         template <class AnyAllocator, class FN>
-        constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, FN&& where_join) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, FN&& where_join) &&
             requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
             return std::move(*this).join(insert_items, start_pos, _size(), std::forward<FN>(where_join));
@@ -5651,7 +5701,7 @@ namespace _list_array_impl {
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
         template <class AnyAllocator, class FN>
-        constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, size_t end_pos, FN&& where_join) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos, size_t end_pos, FN&& where_join) &&
             requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
             list_array<T, Allocator> res;
@@ -5691,7 +5741,7 @@ namespace _list_array_impl {
          * @return A new `list_array` object containing the joined elements.
          */
         template <size_t arr_size, class FN>
-        constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], FN&& where_join) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], FN&& where_join) &&
             requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
             return std::move(*this).join(insert_items, arr_size, 0, _size(), std::forward<FN>(where_join));
@@ -5711,7 +5761,7 @@ namespace _list_array_impl {
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
          */
         template <size_t arr_size, class FN>
-        constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], size_t start_pos, FN&& where_join) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], size_t start_pos, FN&& where_join) &&
             requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
             return std::move(*this).join(insert_items, arr_size, start_pos, _size(), std::forward<FN>(where_join));
@@ -5733,7 +5783,7 @@ namespace _list_array_impl {
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
         template <size_t arr_size, class FN>
-        constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], size_t start_pos, size_t end_pos, FN&& where_join) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], size_t start_pos, size_t end_pos, FN&& where_join) &&
             requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
             return std::move(*this).join(insert_items, arr_size, start_pos, end_pos, std::forward<FN>(where_join));
@@ -5751,7 +5801,7 @@ namespace _list_array_impl {
          * @return A new `list_array` object containing the joined elements.
          */
         template <class FN>
-        constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, FN&& where_join) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, FN&& where_join) &&
             requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
             return std::move(*this).join(insert_items, items_count, 0, _size(), std::forward<FN>(where_join));
@@ -5771,7 +5821,7 @@ namespace _list_array_impl {
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
          */
         template <class FN>
-        constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, size_t start_pos, FN&& where_join) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, size_t start_pos, FN&& where_join) &&
             requires std::copy_constructible<T>
         {
             return std::move(*this).join(insert_items, items_count, start_pos, _size(), std::forward<FN>(where_join));
@@ -5793,7 +5843,7 @@ namespace _list_array_impl {
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
         template <class FN>
-        constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, size_t start_pos, size_t end_pos, FN&& where_join) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, size_t start_pos, size_t end_pos, FN&& where_join) &&
             requires std::copy_constructible<T> && (std::is_invocable_r_v<bool, FN, const T&> || std::is_invocable_r_v<bool, FN, size_t, const T&>)
         {
             list_array<T, Allocator> res;
@@ -5832,7 +5882,7 @@ namespace _list_array_impl {
          * @param where_join The predicate function to determine where to insert the `insert_item`.
          * @return A new `list_array` object containing the joined elements.
          */
-        constexpr list_array<T, Allocator> join(const T& insert_item) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T& insert_item) &&
             requires std::copy_constructible<T>
         {
             return std::move(*this).join(insert_item, 0, _size());
@@ -5848,7 +5898,7 @@ namespace _list_array_impl {
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
          */
-        constexpr list_array<T, Allocator> join(const T& insert_item, size_t start_pos) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T& insert_item, size_t start_pos) &&
             requires std::copy_constructible<T>
         {
             return std::move(*this).join(insert_item, start_pos, _size());
@@ -5866,7 +5916,7 @@ namespace _list_array_impl {
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
-        constexpr list_array<T, Allocator> join(const T& insert_item, size_t start_pos, size_t end_pos) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T& insert_item, size_t start_pos, size_t end_pos) &&
             requires std::copy_constructible<T>
         {
             list_array<T, Allocator> res;
@@ -5893,7 +5943,7 @@ namespace _list_array_impl {
          * @return A new `list_array` object containing the joined elements.
          */
         template <class AnyAllocator>
-        constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items) &&
             requires std::copy_constructible<T>
         {
             return std::move(*this).join(insert_items, 0, _size());
@@ -5911,7 +5961,7 @@ namespace _list_array_impl {
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
          */
         template <class AnyAllocator>
-        constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const list_array<T, AnyAllocator>& insert_items, size_t start_pos) &&
             requires std::copy_constructible<T>
         {
             return std::move(*this).join(insert_items, start_pos, _size());
@@ -5957,7 +6007,7 @@ namespace _list_array_impl {
          * @param items_count The number of items in the raw array `insert_items`.
          * @return A new `list_array` object containing the joined elements.
          */
-        constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count) &&
             requires std::copy_constructible<T>
         {
             return std::move(*this).join(insert_items, items_count, 0, _size());
@@ -5974,7 +6024,7 @@ namespace _list_array_impl {
          * @return A new `list_array` object containing the joined elements.
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
          */
-        constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, size_t start_pos) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, size_t start_pos) &&
             requires std::copy_constructible<T>
         {
             return std::move(*this).join(insert_items, items_count, start_pos, _size());
@@ -5992,7 +6042,7 @@ namespace _list_array_impl {
          * @throws std::invalid_argument If `start_pos` is greater than `end_pos`.
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
-        constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, size_t start_pos, size_t end_pos) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T* insert_items, size_t items_count, size_t start_pos, size_t end_pos) &&
             requires std::copy_constructible<T>
         {
             list_array<T, Allocator> res;
@@ -6019,7 +6069,7 @@ namespace _list_array_impl {
          * @return A new `list_array` object containing the joined elements.
          */
         template <size_t arr_size>
-        constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size]) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size]) &&
             requires std::copy_constructible<T>
         {
             return std::move(*this).join(insert_items, arr_size, 0, _size());
@@ -6037,7 +6087,7 @@ namespace _list_array_impl {
          * @throws std::invalid_argument If `start_pos` is greater than size of the array.
          */
         template <size_t arr_size>
-        constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], size_t start_pos) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], size_t start_pos) &&
             requires std::copy_constructible<T>
         {
             return std::move(*this).join(insert_items, arr_size, start_pos, _size());
@@ -6057,10 +6107,97 @@ namespace _list_array_impl {
          * @throws std::out_of_range If `end_pos` exceeds the size of the array.
          */
         template <size_t arr_size>
-        constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], size_t start_pos, size_t end_pos) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> join(const T (&insert_items)[arr_size], size_t start_pos, size_t end_pos) &&
             requires std::copy_constructible<T>
         {
             return std::move(*this).join(insert_items, arr_size, start_pos, _size());
+        }
+
+/// @}
+#pragma endregion
+#pragma region join_with
+
+        /// @name join_with
+        /// @{
+
+        template <class AnyT, class AnyAllocator, class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> join_with(const list_array<AnyT, AnyAllocator>& array, FN&& iterate_fn)
+            requires std::is_invocable_r_v<T, FN, const T&, const AnyT&> || std::is_invocable_r_v<T, FN, size_t, const T&, const AnyT&>
+        {
+            return join_with(array, 0, _size(), std::forward<FN>(iterate_fn));
+        }
+
+        template <class AnyT, class AnyAllocator, class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> join_with(const list_array<AnyT, AnyAllocator>& array, size_t start_pos, FN&& iterate_fn)
+            requires std::is_invocable_r_v<T, FN, const T&, const AnyT&> || std::is_invocable_r_v<T, FN, size_t, const T&, const AnyT&>
+        {
+            return join_with(array, start_pos, _size(), std::forward<FN>(iterate_fn));
+        }
+
+        template <class AnyT, class AnyAllocator, class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> join_with(const list_array<AnyT, AnyAllocator>& array, size_t start_pos, size_t end_pos, FN&& iterate_fn)
+            requires std::is_invocable_r_v<T, FN, const T&, const AnyT&> || std::is_invocable_r_v<T, FN, size_t, const T&, const AnyT&>
+        {
+            if (start_pos > end_pos)
+                throw std::invalid_argument("end_pos must be bigger than start_pos");
+            if (end_pos > _size())
+                throw std::out_of_range("end_pos out of size limit");
+            if (array.size() == 0)
+                return {};
+            list_array<T, Allocator> result;
+            result.reserve(_size() * array.size());
+            if constexpr (std::is_invocable_v<FN, size_t, const T&, const AnyT&>) {
+                size_t pos = start_pos;
+                for (const T& i : range(start_pos, end_pos)) {
+                    for (auto& it : array)
+                        result.push_back(iterate_fn(pos, i, it));
+                    ++pos;
+                }
+            } else
+                for (const T& i : range(start_pos, end_pos))
+                    for (auto& it : array)
+                        result.push_back(iterate_fn(i, it));
+            return result;
+        }
+
+        template <class AnyT, class AnyAllocator, class ResAllocator, class FN>
+        [[nodiscard]] constexpr list_array<T, ResAllocator> join_with(const list_array<AnyT, AnyAllocator>& array, FN&& iterate_fn)
+            requires std::is_invocable_r_v<list_array<T, ResAllocator>, FN, const T&, const AnyT&> || std::is_invocable_r_v<list_array<T, ResAllocator>, FN, size_t, const T&, const AnyT&>
+        {
+            return join_with(array, 0, _size(), std::forward<FN>(iterate_fn));
+        }
+
+        template <class AnyT, class AnyAllocator, class ResAllocator, class FN>
+        [[nodiscard]] constexpr list_array<T, ResAllocator> join_with(const list_array<AnyT, AnyAllocator>& array, size_t start_pos, FN&& iterate_fn)
+            requires std::is_invocable_r_v<list_array<T, ResAllocator>, FN, const T&, const AnyT&> || std::is_invocable_r_v<list_array<T, ResAllocator>, FN, size_t, const T&, const AnyT&>
+        {
+            return join_with(array, start_pos, _size(), std::forward<FN>(iterate_fn));
+        }
+
+        template <class AnyT, class AnyAllocator, class ResAllocator, class FN>
+        [[nodiscard]] constexpr list_array<T, ResAllocator> join_with(const list_array<AnyT, AnyAllocator>& array, size_t start_pos, size_t end_pos, FN&& iterate_fn)
+            requires std::is_invocable_r_v<list_array<T, ResAllocator>, FN, const T&, const AnyT&> || std::is_invocable_r_v<list_array<T, ResAllocator>, FN, size_t, const T&, const AnyT&>
+        {
+            if (start_pos > end_pos)
+                throw std::invalid_argument("end_pos must be bigger than start_pos");
+            if (end_pos > _size())
+                throw std::out_of_range("end_pos out of size limit");
+            if (array.size() == 0)
+                return {};
+            list_array<T, ResAllocator> result;
+            result.reserve(_size() * array.size());
+            if constexpr (std::is_invocable_v<FN, size_t, const T&, const AnyT&>) {
+                size_t pos = start_pos;
+                for (const T& i : range(start_pos, end_pos)) {
+                    for (auto& it : array)
+                        result.push_back(iterate_fn(pos, i, it));
+                    ++pos;
+                }
+            } else
+                for (const T& i : range(start_pos, end_pos))
+                    for (auto& it : array)
+                        result.push_back(iterate_fn(i, it));
+            return result;
         }
 
 /// @}
@@ -6759,6 +6896,21 @@ namespace _list_array_impl {
             return res;
         }
 
+        template <class AnyAllocator>
+        [[nodiscard]] list_array<T, Allocator> operator+(const list_array<T, AnyAllocator>& op) && {
+            return take().push_back(op);
+        }
+
+        template <class AnyAllocator>
+        [[nodiscard]] list_array<T, Allocator> operator+(const list_array<T, AnyAllocator>& op) const& {
+            return list_array<T, Allocator>(*this).push_back(op);
+        }
+
+        template <class AnyAllocator>
+        list_array<T, Allocator>& operator+=(const list_array<T, AnyAllocator>& op) {
+            return push_back(op);
+        }
+
 /// @}
 #pragma endregion
 #pragma region where
@@ -7335,7 +7487,7 @@ namespace _list_array_impl {
          * @return A new `list_array` containing the transformed elements.
          */
         template <class FN>
-        constexpr list_array<T, Allocator> transform(FN&& iterate_fn) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> transform(FN&& iterate_fn) &&
             requires std::is_invocable_r_v<T, FN, T&&> || std::is_invocable_r_v<T, FN, size_t, T&&> || is_apply_invocable_r_v<T, FN, T>
         {
             return std::move(*this).transform(0, _size(), std::forward<FN>(iterate_fn));
@@ -7350,7 +7502,7 @@ namespace _list_array_impl {
          * @throws std::invalid_argument If `start_pos` is greater than the size of the `list_array`.
          */
         template <class FN>
-        constexpr list_array<T, Allocator> transform(size_t start_pos, FN&& iterate_fn) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> transform(size_t start_pos, FN&& iterate_fn) &&
             requires std::is_invocable_r_v<T, FN, T&&> || std::is_invocable_r_v<T, FN, size_t, T&&> || is_apply_invocable_r_v<T, FN, T>
         {
             return std::move(*this).transform(start_pos, _size(), std::forward<FN>(iterate_fn));
@@ -7367,7 +7519,7 @@ namespace _list_array_impl {
          * @throws std::out_of_range If `end_pos` is greater than the size of the `list_array`.
          */
         template <class FN>
-        constexpr list_array<T, Allocator> transform(size_t start_pos, size_t end_pos, FN&& iterate_fn) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> transform(size_t start_pos, size_t end_pos, FN&& iterate_fn) &&
             requires std::is_invocable_r_v<T, FN, T&&> || std::is_invocable_r_v<T, FN, size_t, T&&> || is_apply_invocable_r_v<T, FN, T>
         {
             if (start_pos > end_pos)
@@ -7379,6 +7531,9 @@ namespace _list_array_impl {
                 size_t pos = start_pos;
                 for (T& i : range(start_pos, end_pos))
                     i = iterate_fn(pos++, std::move(i));
+            } else if constexpr (std::is_invocable_v<FN, T&&>) {
+                for (T& i : range(start_pos, end_pos))
+                    i = iterate_fn(std::move(i));
             } else if constexpr (is_apply_invocable_v<FN, T>)
                 for (T& i : range(start_pos, end_pos))
                     i = std::apply(iterate_fn, std::move(i));
@@ -7434,6 +7589,79 @@ namespace _list_array_impl {
             requires std::is_invocable_r_v<T, FN, T&&> || std::is_invocable_r_v<T, FN, size_t, T&&> || is_apply_invocable_r_v<T, FN, T>
         {
             return *this = std::move(*this).transform(start_pos, end_pos, iterate_fn);
+        }
+
+/// @}
+#pragma endregion
+#pragma region transform_with
+
+        /// @name transform_with
+        /// @{
+
+        template <class AnyT, class AnyAllocator, class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> transform_with(const list_array<AnyT, AnyAllocator>& array, FN&& iterate_fn) &&
+            requires std::is_invocable_v<FN, T&, const AnyT&> || std::is_invocable_v<FN, size_t, T&, const AnyT&>
+        {
+            return std::move(*this).transform_with(array, 0, _size(), std::forward<FN>(iterate_fn));
+        }
+
+        template <class AnyT, class AnyAllocator, class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> transform_with(const list_array<AnyT, AnyAllocator>& array, size_t start_pos, FN&& iterate_fn) &&
+            requires std::is_invocable_v<FN, T&, const AnyT&> || std::is_invocable_v<FN, size_t, T&, const AnyT&>
+        {
+            return std::move(*this).transform_with(array, start_pos, _size(), std::forward<FN>(iterate_fn));
+        }
+
+        template <class AnyT, class AnyAllocator, class FN>
+        [[nodiscard]] constexpr list_array<T, Allocator> transform_with(const list_array<AnyT, AnyAllocator>& array, size_t start_pos, size_t end_pos, FN&& iterate_fn) &&
+            requires std::is_invocable_v<FN, T&, const AnyT&> || std::is_invocable_v<FN, size_t, T&, const AnyT&>
+        {
+            if (start_pos > end_pos)
+                throw std::invalid_argument("end_pos must be bigger than start_pos");
+            if (end_pos > _size())
+                throw std::out_of_range("end_pos out of size limit");
+            if (array.size() == 0)
+                return std::move(*this);
+            auto arr_beg = array.begin();
+            auto arr_end = array.end();
+            if constexpr (std::is_invocable_v<FN, size_t, T&, const AnyT&>) {
+                size_t pos = start_pos;
+                for (T& i : range(start_pos, end_pos)) {
+                    if (arr_beg == arr_end)
+                        arr_beg = array.begin();
+                    iterate_fn(pos, i, *arr_beg);
+                    ++arr_beg;
+                    ++pos;
+                }
+            } else
+                for (T& i : range(start_pos, end_pos)) {
+                    if (arr_beg == arr_end)
+                        arr_beg = array.begin();
+                    iterate_fn(i, *arr_beg);
+                    ++arr_beg;
+                }
+            return std::move(*this);
+        }
+
+        template <class AnyT, class AnyAllocator = std::allocator<AnyT>, class FN>
+        constexpr list_array<T, Allocator>& transform_with(const list_array<AnyT, AnyAllocator>& array, FN&& iterate_fn) &
+            requires std::is_invocable_v<FN, T&, const AnyT&> || std::is_invocable_v<FN, size_t, T&, const AnyT&>
+        {
+            return *this = std::move(*this).transform_with(array, 0, _size(), iterate_fn);
+        }
+
+        template <class AnyT, class AnyAllocator = std::allocator<AnyT>, class FN>
+        constexpr list_array<T, Allocator>& transform_with(const list_array<AnyT, AnyAllocator>& array, size_t start_pos, FN&& iterate_fn) &
+            requires std::is_invocable_v<FN, T&, const AnyT&> || std::is_invocable_v<FN, size_t, T&, const AnyT&>
+        {
+            return *this = std::move(*this).transform_with(array, start_pos, _size(), iterate_fn);
+        }
+
+        template <class AnyT, class AnyAllocator = std::allocator<AnyT>, class FN>
+        constexpr list_array<T, Allocator>& transform_with(const list_array<AnyT, AnyAllocator>& array, size_t start_pos, size_t end_pos, FN&& iterate_fn) &
+            requires std::is_invocable_v<FN, T&, const AnyT&> || std::is_invocable_v<FN, size_t, T&, const AnyT&>
+        {
+            return *this = std::move(*this).transform_with(array, start_pos, end_pos, iterate_fn);
         }
 
 /// @}
@@ -7727,6 +7955,67 @@ namespace _list_array_impl {
             } else
                 for (auto& i : tmp.range(start_pos, end_pos))
                     res.push_back(iterate_fn(std::move(i)));
+            return res;
+        }
+
+/// @}
+#pragma endregion
+#pragma region convert_fn
+
+        /// @name convert_fn
+        /// @{
+
+        template <class FN>
+        [[nodiscard]] constexpr list_array<std::invoke_result_t<FN, const T&>, std::allocator<std::invoke_result_t<FN, const T&>>> convert_fn(FN&& iterate_fn) const&
+            requires std::is_invocable_v<FN, const T&>
+        {
+            return convert_fn(0, _size(), std::forward<FN>(iterate_fn));
+        }
+
+        template <class FN>
+        [[nodiscard]] constexpr list_array<std::invoke_result_t<FN, const T&>, std::allocator<std::invoke_result_t<FN, const T&>>> convert_fn(size_t start_pos, FN&& iterate_fn) const&
+            requires std::is_invocable_v<FN, const T&>
+        {
+            return convert_fn(start_pos, _size(), std::forward<FN>(iterate_fn));
+        }
+
+        template <class FN>
+        [[nodiscard]] constexpr list_array<std::invoke_result_t<FN, const T&>, std::allocator<std::invoke_result_t<FN, const T&>>> convert_fn(size_t start_pos, size_t end_pos, FN&& iterate_fn) const&
+            requires std::is_invocable_v<FN, const T&>
+        {
+            list_array<std::invoke_result_t<FN, const T&>, std::allocator<std::invoke_result_t<FN, const T&>>> res;
+            if (end_pos > _size())
+                throw std::out_of_range("end_pos out of size limit");
+            res.reserve_back(end_pos - start_pos);
+            for (auto& i : range(start_pos, end_pos))
+                res.push_back(iterate_fn(i));
+            return res;
+        }
+
+        template <class FN>
+        [[nodiscard]] constexpr list_array<std::invoke_result_t<FN, T&&>, std::allocator<std::invoke_result_t<FN, T&&>>> convert_fn(FN&& iterate_fn) &&
+            requires std::is_invocable_v<FN, T&&>
+        {
+            return std::move(*this).convert_fn(0, _size(), std::forward<FN>(iterate_fn));
+        }
+
+        template <class FN>
+        [[nodiscard]] constexpr list_array<std::invoke_result_t<FN, T&&>, std::allocator<std::invoke_result_t<FN, T&&>>> convert_fn(size_t start_pos, FN&& iterate_fn) &&
+            requires std::is_invocable_v<FN, T&&>
+        {
+            return std::move(*this).convert_fn(start_pos, _size(), std::forward<FN>(iterate_fn));
+        }
+
+        template <class FN>
+        [[nodiscard]] constexpr list_array<std::invoke_result_t<FN, T&&>, std::allocator<std::invoke_result_t<FN, T&&>>> convert_fn(size_t start_pos, size_t end_pos, FN&& iterate_fn) &&
+            requires std::is_invocable_v<FN, T&&>
+        {
+            list_array<std::invoke_result_t<FN, T&&>, std::allocator<std::invoke_result_t<FN, T&&>>> res;
+            if (end_pos > _size())
+                throw std::out_of_range("end_pos out of size limit");
+            res.reserve_back(end_pos - start_pos);
+            for (auto& i : range(start_pos, end_pos))
+                res.push_back(iterate_fn(std::move(i)));
             return res;
         }
 
@@ -8052,7 +8341,7 @@ namespace _list_array_impl {
          * @param with The new value to insert.
          * @return A new `list_array` with the replacements made.
          */
-        constexpr list_array<T, Allocator> replace(const T& target, const T& with) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> replace(const T& target, const T& with) &&
             requires std::equality_comparable<T> && std::is_copy_constructible_v<T>
         {
             return replace(target, with).take();
@@ -8428,7 +8717,7 @@ namespace _list_array_impl {
         * If the `selector` accepts the index, it will be provided during the replacement process.
         */
         template <class FN>
-        constexpr list_array<T, Allocator> replace_if(const T& with, FN&& selector) &&
+        [[nodiscard]] constexpr list_array<T, Allocator> replace_if(const T& with, FN&& selector) &&
             requires std::is_copy_constructible_v<T> && (std::is_invocable_r_v<bool, FN, T&> || std::is_invocable_r_v<bool, FN, size_t, T&>)
         {
             return replace_if(with, std::forward<FN>(selector)).take();
@@ -9058,6 +9347,8 @@ namespace _list_array_impl {
          * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
         constexpr list_array<T, Allocator>& reserve_front(size_t size) & {
+            if (!size)
+                return *this;
             _reserved_front += size;
             if (first_block) {
                 auto new_block = arr_block<T>::create_block(allocator_and_size.get_allocator(), size);
@@ -9076,6 +9367,8 @@ namespace _list_array_impl {
          * @return list_array<T, Allocator>& A reference to the modified list_array.
          */
         constexpr list_array<T, Allocator>& reserve_back(size_t size) & {
+            if (!size)
+                return *this;
             _reserved_back += size;
             if (last_block) {
                 auto new_block = arr_block<T>::create_block(allocator_and_size.get_allocator(), size);
@@ -9698,7 +9991,7 @@ namespace _list_array_impl {
         {
             Container copy_container;
             copy_container.reserve(size());
-            for_each([&copy_container](size_t i, const T& it) {
+            for_each([&copy_container](const T& it) {
                 copy_container.emplace(it);
             });
             return copy_container;
@@ -9717,7 +10010,7 @@ namespace _list_array_impl {
         {
             Container move_container;
             move_container.reserve(size());
-            std::move(*this).for_each([&move_container](size_t i, T&& it) {
+            std::move(*this).for_each([&move_container](T&& it) {
                 move_container.emplace(std::move(it));
             });
             return move_container;
@@ -9834,6 +10127,23 @@ namespace _list_array_impl {
         /// @}
 
 #pragma endregion
+#pragma region count
+
+        /// @name count
+        /// @{
+        template <class FN>
+        [[nodiscard]] constexpr size_t count(FN counter) const
+            requires std::is_invocable_v<FN, const T&> && std::is_convertible_v<size_t, std::invoke_result_t<FN, const T&>>
+        {
+            size_t c = 0;
+            for (auto& it : *this)
+                c += (size_t)counter(it);
+            return c;
+        }
+
+/// @}
+#pragma endregion
+#pragma endregion
 
         /**
          * @brief Returns the allocator associated with the container.
@@ -9857,6 +10167,16 @@ namespace _list_array_impl {
 
 template <class T, class Allocator = std::allocator<T>>
 using list_array = _list_array_impl::list_array<T, Allocator>;
+
+template <class Array, class Allocator = std::allocator<typename _list_array_impl::is_container<Array>::value_type>>
+list_array<typename _list_array_impl::is_container<Array>::value_type, Allocator> to_list_array(Array&& arr) {
+    return list_array<typename _list_array_impl::is_container<Array>::value_type, Allocator>(std::move(arr));
+}
+
+template <class Array, class Allocator = std::allocator<typename _list_array_impl::is_container<Array>::value_type>>
+list_array<typename _list_array_impl::is_container<Array>::value_type, Allocator> to_list_array(const Array& arr) {
+    return list_array<typename _list_array_impl::is_container<Array>::value_type, Allocator>(arr);
+}
 
 template <class Allocator = std::allocator<uint8_t>>
 struct bit_list_array {
