@@ -2416,12 +2416,12 @@ namespace _list_array_impl {
          * @param args The arguments to be forwarded to the constructor of T.
          */
         template <class... Args>
-        constexpr list_array<T, Allocator>& emplace_back(Args&&... args) & {
+        constexpr decltype(auto) emplace_back(Args&&... args) & {
             if (_reserved_back) {
-                std::construct_at(get_direct_element_at_index(_reserved_front + _size()), std::forward<Args>(args)...);
+                auto it = std::construct_at(get_direct_element_at_index(_reserved_front + _size()), std::forward<Args>(args)...);
                 ++_size();
                 --_reserved_back;
-                return *this;
+                return *it;
             } else if (_reserved_front) {
                 if (first_block->data_size <= _reserved_front) {
                     steal_reserve_block_front_to_back();
@@ -2558,12 +2558,12 @@ namespace _list_array_impl {
          * @param args The arguments to be forwarded to the constructor of T.
          */
         template <class... Args>
-        constexpr list_array<T, Allocator>& emplace_front(Args&&... args) & {
+        constexpr decltype(auto) emplace_front(Args&&... args) & {
             if (_reserved_front) {
-                std::construct_at(get_direct_element_at_index(_reserved_front - 1), std::forward<Args>(args)...);
+                auto it = std::construct_at(get_direct_element_at_index(_reserved_front - 1), std::forward<Args>(args)...);
                 ++_size();
                 --_reserved_front;
-                return *this;
+                return *it;
             } else if (_reserved_back) {
                 if (last_block->data_size <= _reserved_back) {
                     steal_reserve_block_back_to_front();
@@ -3252,6 +3252,8 @@ namespace _list_array_impl {
             requires std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>
         {
             size_t old_size = _size();
+            if (old_size == 0)
+                return 0;
             remove_in(std::forward<FN>(fn), begin(), end());
             return old_size - _size();
         }
@@ -3271,6 +3273,8 @@ namespace _list_array_impl {
             requires std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>
         {
             size_t old_size = _size();
+            if (old_size == 0)
+                return 0;
             remove_in(std::forward<FN>(fn), get_iterator(begin), end());
             return old_size - _size();
         }
@@ -3291,6 +3295,8 @@ namespace _list_array_impl {
             requires std::is_invocable_r_v<bool, FN, size_t, const T&> || std::is_invocable_r_v<bool, FN, const T&>
         {
             size_t old_size = _size();
+            if (old_size == 0)
+                return 0;
             remove_in(std::forward<FN>(fn), get_iterator(begin), get_iterator(end));
             return old_size - _size();
         }
