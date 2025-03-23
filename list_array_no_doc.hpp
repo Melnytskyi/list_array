@@ -4275,8 +4275,8 @@ namespace _list_array_impl {
                 size_t n2 = end - middle;
                 if (curr_L_size < n1 || curr_M_size < n2)
                     fix_size(start, middle, end);
-                get_iterator(start)._fast_load<true, true>(L, n1);
-                get_iterator(middle)._fast_load<true, true>(M, n2);
+                get_iterator(start).template _fast_load<true, true>(L, n1);
+                get_iterator(middle).template _fast_load<true, true>(M, n2);
                 size_t i = 0, j = 0, k = start;
                 for (T& it : range(start, end)) {
                     if (i < n1 && j < n2)
