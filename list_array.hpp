@@ -41,7 +41,7 @@ namespace _list_array_impl {
                 decltype(std::declval<T>().cbegin()),
                 decltype(std::declval<T>().cend())>,
             void>> : std::true_type {
-        using value_type = typename T::value_type;
+        using container_type = typename T::value_type;
         using container = T;
     };
 
@@ -10159,14 +10159,14 @@ namespace _list_array_impl {
 template <class T, class Allocator = std::allocator<T>>
 using list_array = _list_array_impl::list_array<T, Allocator>;
 
-template <class Array, class Allocator = std::allocator<typename _list_array_impl::is_container<Array>::value_type>>
-list_array<typename _list_array_impl::is_container<Array>::value_type, Allocator> to_list_array(Array&& arr) {
-    return list_array<typename _list_array_impl::is_container<Array>::value_type, Allocator>(std::move(arr));
+template <class Array, class Allocator = std::allocator<typename _list_array_impl::is_container<Array>::container_type>>
+list_array<typename _list_array_impl::is_container<Array>::container_type, Allocator> to_list_array(Array&& arr) {
+    return list_array<typename _list_array_impl::is_container<Array>::container_type, Allocator>(std::move(arr));
 }
 
-template <class Array, class Allocator = std::allocator<typename _list_array_impl::is_container<Array>::value_type>>
-list_array<typename _list_array_impl::is_container<Array>::value_type, Allocator> to_list_array(const Array& arr) {
-    return list_array<typename _list_array_impl::is_container<Array>::value_type, Allocator>(arr);
+template <class Array, class Allocator = std::allocator<typename _list_array_impl::is_container<Array>::container_type>>
+list_array<typename _list_array_impl::is_container<Array>::container_type, Allocator> to_list_array(const Array& arr) {
+    return list_array<typename _list_array_impl::is_container<Array>::container_type, Allocator>(arr);
 }
 
 template <class Allocator = std::allocator<uint8_t>>
