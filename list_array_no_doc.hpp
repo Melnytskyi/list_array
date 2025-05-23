@@ -4305,7 +4305,7 @@ namespace _list_array_impl {
                 const auto* check = &operator[](0);
                 size_t res = 0;
                 for (const T& it : *this) {
-                    if (*check > it)
+                    if (!compare(*check, it))
                         return res;
                     check = &it;
                     ++res;
