@@ -821,7 +821,7 @@ namespace _list_array_impl {
 
             constexpr reverse_iterator& operator+=(size_t sub) {
                 if (sub > absolute_index)
-                    throw std::out_of_range("list_array::reverse_iterator::operator-=: sub out of range");
+                    throw std::out_of_range("list_array::reverse_iterator::operator+=: sub out of range");
                 size_t remaining = sub;
                 absolute_index -= sub;
                 while (remaining > 0) {
@@ -919,6 +919,17 @@ namespace _list_array_impl {
                 *this = copy;
             }
 
+            constexpr const_reverse_iterator& operator=(const const_iterator& setter) {
+                block = setter.block;
+                relative_index = setter.relative_index;
+                absolute_index = setter.absolute_index;
+                return *this;
+            }
+
+            constexpr const_reverse_iterator(const const_iterator& copy) {
+                *this = copy;
+            }
+
             constexpr const_reverse_iterator& operator=(const reverse_iterator& setter) {
                 block = setter.block;
                 relative_index = setter.relative_index;
@@ -983,7 +994,7 @@ namespace _list_array_impl {
 
             constexpr const_reverse_iterator& operator+=(size_t sub) {
                 if (sub > absolute_index)
-                    throw std::out_of_range("list_array::const_reverse_iterator::operator-=: sub out of range");
+                    throw std::out_of_range("list_array::const_reverse_iterator::operator+=: sub out of range");
                 size_t remaining = sub;
                 absolute_index -= sub;
                 while (remaining > 0) {
@@ -2484,7 +2495,7 @@ namespace _list_array_impl {
         constexpr list_array<T, Allocator>& push_front(const list_array<T, AnyAllocator>& alloc) & {
             if (_reserved_front < alloc.size())
                 reserve_front(alloc.size() - _reserved_front);
-            for (const auto& value : alloc)
+            for (const auto& value : alloc.reverse())
                 push_front(value);
             return *this;
         }
@@ -2499,8 +2510,9 @@ namespace _list_array_impl {
         constexpr list_array<T, Allocator>& push_front(list_array<T, AnyAllocator>&& alloc) & {
             if (_reserved_front < alloc.size())
                 reserve_front(alloc.size() - _reserved_front);
-            for (auto& value : alloc)
+            for (auto& value : alloc.reverse())
                 push_front(std::move(value));
+            alloc.clear();
             return *this;
         }
 
@@ -10169,18 +10181,20 @@ list_array<typename _list_array_impl::is_container<Array>::container_type, Alloc
     return list_array<typename _list_array_impl::is_container<Array>::container_type, Allocator>(arr);
 }
 
-template <class Allocator = std::allocator<uint8_t>>
+template <class T = uint8_t, class Allocator = std::allocator<T>>
 struct bit_list_array {
-    list_array<uint8_t, Allocator> arr;
-    uint8_t begin_bit : 4;
-    uint8_t end_bit : 4;
+    list_array<T, Allocator> arr;
+    T begin_bit;
+    T end_bit;
+
+    static inline constexpr size_t max_bits = sizeof(T) * 8;
 
     class bit_refrence {
-        uint8_t& byte;
-        uint8_t bit;
+        T& byte;
+        T bit;
 
     public:
-        constexpr bit_refrence(uint8_t& byte, uint8_t bit)
+        constexpr bit_refrence(T& byte, T bit)
             : byte(byte), bit(bit) {}
 
         constexpr operator bool() const {
@@ -10219,7 +10233,7 @@ public:
         : begin_bit(0), end_bit(0), arr(alloc) {}
 
     constexpr bit_list_array(size_t size, const Allocator& alloc = Allocator())
-        : arr(size / 8 + (size % 8 ? 1 : 0), alloc), begin_bit(0), end_bit(0) {}
+        : arr(size / max_bits + (size % max_bits ? 1 : 0), alloc), begin_bit(0), end_bit(0) {}
 
     constexpr bit_list_array(const bit_list_array& copy, const Allocator& alloc = Allocator())
         : arr(copy.arr, alloc), begin_bit(copy.begin_bit), end_bit(copy.end_bit) {}
@@ -10231,7 +10245,7 @@ public:
     }
 
     constexpr size_t size() const {
-        return (arr.size() - 1) * 8 + end_bit - begin_bit;
+        return (arr.size() - 1) * max_bits + end_bit - begin_bit;
     }
 
     constexpr bit_list_array& operator=(const bit_list_array& copy) {
@@ -10249,7 +10263,7 @@ public:
     }
 
     constexpr bit_list_array& push_back(bool val) {
-        if (end_bit == 8) {
+        if (end_bit == max_bits) {
             arr.push_back(0);
             end_bit = 0;
             return *this;
@@ -10261,7 +10275,7 @@ public:
     constexpr bit_list_array& pop_back() {
         if (end_bit == 0) {
             arr.pop_back();
-            end_bit = 8;
+            end_bit = max_bits;
             return *this;
         }
         end_bit--;
@@ -10272,14 +10286,14 @@ public:
     constexpr bit_list_array& push_front(bool val) {
         if (begin_bit == 0) {
             arr.push_front(0);
-            begin_bit = 8;
+            begin_bit = max_bits;
         }
         arr[0] |= val << --begin_bit;
         return *this;
     }
 
     constexpr bit_list_array& pop_front() {
-        if (begin_bit == 8) {
+        if (begin_bit == max_bits) {
             arr.pop_front();
             begin_bit = 0;
             return *this;
@@ -10289,8 +10303,8 @@ public:
     }
 
     constexpr bool at(size_t pos) const {
-        size_t byte = pos / 8;
-        size_t bit = pos % 8;
+        size_t byte = pos / max_bits;
+        size_t bit = pos % max_bits;
         if (byte >= arr.size())
             throw std::out_of_range("pos out of size limit");
         if (byte == 0 && bit < begin_bit)
@@ -10301,8 +10315,8 @@ public:
     }
 
     constexpr bool set(size_t pos, bool val) {
-        size_t byte = pos / 8;
-        size_t bit = pos % 8;
+        size_t byte = pos / max_bits;
+        size_t bit = pos % max_bits;
         if (byte >= arr.size())
             throw std::out_of_range("pos out of size limit");
         if (byte == 0 && bit < begin_bit)
@@ -10318,8 +10332,8 @@ public:
     }
 
     constexpr bit_refrence operator[](size_t pos) {
-        size_t byte = pos / 8;
-        size_t bit = pos % 8;
+        size_t byte = pos / max_bits;
+        size_t bit = pos % max_bits;
         if (byte >= arr.size())
             throw std::out_of_range("pos out of size limit");
         if (byte == 0 && bit < begin_bit)
@@ -10337,17 +10351,17 @@ public:
     }
 
     constexpr bit_list_array& resize(size_t size) {
-        arr.resize(size / 8 + (size % 8 ? 1 : 0));
+        arr.resize(size / max_bits + (size % max_bits ? 1 : 0));
         return *this;
     }
 
     constexpr bit_list_array& reserve_back(size_t size) {
-        arr.reserve_back(size / 8 + (size % 8 ? 1 : 0));
+        arr.reserve_back(size / max_bits + (size % max_bits ? 1 : 0));
         return *this;
     }
 
     constexpr bit_list_array& reserve_front(size_t size) {
-        arr.reserve_front(size / 8 + (size % 8 ? 1 : 0));
+        arr.reserve_front(size / max_bits + (size % max_bits ? 1 : 0));
     }
 
     constexpr bool need_commit() const {
@@ -10372,7 +10386,7 @@ public:
     constexpr bit_list_array& swap(bit_list_array& to_swap) noexcept {
         if (this != &to_swap) {
             arr.swap(to_swap.arr);
-            uint8_t tmp = begin_bit;
+            T tmp = begin_bit;
             begin_bit = to_swap.begin_bit;
             to_swap.begin_bit = tmp;
             tmp = end_bit;
@@ -10399,8 +10413,8 @@ public:
         for (size_t i = 0; i < min_size; i++)
             operator[](i) &= to_and.at(i);
         if (this_size > to_and_size) {
-            size_t to_zero_bytes = (this_size - min_size) / 8;
-            size_t to_zero_bits = (this_size - min_size) % 8;
+            size_t to_zero_bytes = (this_size - min_size) / max_bits;
+            size_t to_zero_bits = (this_size - min_size) % max_bits;
             for (size_t i = 0; i < to_zero_bytes; i++)
                 arr[to_and_size + i] = 0;
             for (size_t i = 0; i < to_zero_bits; i++)
@@ -10420,8 +10434,8 @@ public:
         for (size_t i = 0; i < min_size; i++)
             operator[](i) |= to_or.at(i);
         if (this_size < to_or_size) {
-            size_t to_or_bytes = (to_or_size - min_size) / 8;
-            size_t to_or_bits = (to_or_size - min_size) % 8;
+            size_t to_or_bytes = (to_or_size - min_size) / max_bits;
+            size_t to_or_bits = (to_or_size - min_size) % max_bits;
             for (size_t i = 0; i < to_or_bytes; i++)
                 push_back(to_or.arr[min_size + i]);
             for (size_t i = 0; i < to_or_bits; i++)
@@ -10441,8 +10455,8 @@ public:
         for (size_t i = 0; i < min_size; i++)
             operator[](i) ^= to_xor.at(i);
         if (this_size < to_xor_size) {
-            size_t to_xor_bytes = (to_xor_size - min_size) / 8;
-            size_t to_xor_bits = (to_xor_size - min_size) % 8;
+            size_t to_xor_bytes = (to_xor_size - min_size) / max_bits;
+            size_t to_xor_bits = (to_xor_size - min_size) % max_bits;
             for (size_t i = 0; i < to_xor_bytes; i++)
                 push_back(to_xor.arr[min_size + i]);
             for (size_t i = 0; i < to_xor_bits; i++)
@@ -10471,12 +10485,16 @@ public:
         return !operator==(to_cmp);
     }
 
-    constexpr const list_array<uint8_t, Allocator>& data() const {
+    constexpr const list_array<T, Allocator>& data() const {
         return arr;
     }
 
-    constexpr list_array<uint8_t, Allocator>& data() {
+    constexpr list_array<T, Allocator>& data() {
         return arr;
+    }
+
+    constexpr list_array<T, Allocator> take() {
+        return commit().arr.take();
     }
 };
 
@@ -10492,10 +10510,10 @@ namespace std {
         }
     };
 
-    template <class Allocator>
-    struct hash<bit_list_array<Allocator>> {
-        constexpr size_t operator()(const bit_list_array<Allocator>& list) {
-            hash<list_array<uint8_t, Allocator>> hasher;
+    template <class T, class Allocator>
+    struct hash<bit_list_array<T, Allocator>> {
+        constexpr size_t operator()(const bit_list_array<T, Allocator>& list) {
+            hash<list_array<T, Allocator>> hasher;
             return hasher(list.data());
         }
     };
