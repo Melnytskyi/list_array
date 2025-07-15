@@ -107,32 +107,35 @@ namespace _list_array_impl {
         T hold_value{};
 
         template <class... Args>
-        compressed_allocator(const Alloc& allocator, Args&&... args)
+        constexpr compressed_allocator(const Alloc& allocator, Args&&... args)
             : Alloc(allocator), hold_value(std::forward<Args>(args)...) {}
 
-        compressed_allocator(compressed_allocator<Alloc, T>&& move)
-            : Alloc(move), hold_value(std::move(move.hold_value)) {}
+        constexpr compressed_allocator(compressed_allocator<Alloc, T>&& move)
+            : Alloc(std::move(move)), hold_value(std::move(move.hold_value)) {}
+
+        constexpr compressed_allocator(const compressed_allocator<Alloc, T>& move)
+            : Alloc(move), hold_value(move.hold_value) {}
 
         using value_type = typename Alloc::value_type;
         using size_type = typename Alloc::size_type;
 
-        value_type* allocate(size_type n) {
+        constexpr value_type* allocate(size_type n) {
             return Alloc::allocate(n);
         }
 
-        void deallocate(value_type* p, size_type n) {
+        constexpr void deallocate(value_type* p, size_type n) {
             Alloc::deallocate(p, n);
         }
 
-        Alloc& get_allocator() {
+        constexpr Alloc& get_allocator() {
             return *this;
         }
 
-        const Alloc& get_allocator() const {
+        constexpr const Alloc& get_allocator() const {
             return *this;
         }
 
-        compressed_allocator<Alloc, T>& operator=(const compressed_allocator<Alloc, T>& allocator) {
+        constexpr compressed_allocator<Alloc, T>& operator=(const compressed_allocator<Alloc, T>& allocator) {
             if constexpr (std::allocator_traits<Alloc>::propagate_on_container_copy_assignment::value) {
                 Alloc::operator=(allocator);
             }
@@ -140,7 +143,7 @@ namespace _list_array_impl {
             return *this;
         }
 
-        compressed_allocator<Alloc, T>& operator=(compressed_allocator<Alloc, T>&& allocator) {
+        constexpr compressed_allocator<Alloc, T>& operator=(compressed_allocator<Alloc, T>&& allocator) {
             if constexpr (std::allocator_traits<Alloc>::propagate_on_container_move_assignment::value) {
                 Alloc::operator=(std::move(allocator));
             }
@@ -167,39 +170,39 @@ namespace _list_array_impl {
         T hold_value{};
 
         template <class... Args>
-        compressed_allocator(const Alloc& allocator, Args&&... args)
+        constexpr compressed_allocator(const Alloc& allocator, Args&&... args)
             : allocator(allocator), hold_value(std::forward<Args>(args)...) {}
 
-        compressed_allocator(compressed_allocator<Alloc, T>&& move)
+        constexpr compressed_allocator(compressed_allocator<Alloc, T>&& move)
             : allocator(move), hold_value(std::move(move.hold_value)) {}
 
         using value_type = typename Alloc::value_type;
         using size_type = typename Alloc::size_type;
 
-        value_type* allocate(size_type n) {
+        constexpr value_type* allocate(size_type n) {
             return allocator.allocate(n);
         }
 
-        void deallocate(value_type* p, size_type n) {
+        constexpr void deallocate(value_type* p, size_type n) {
             allocator.deallocate(p, n);
         }
 
-        Alloc& get_allocator() {
+        constexpr Alloc& get_allocator() {
             return allocator;
         }
 
-        const Alloc& get_allocator() const {
+        constexpr const Alloc& get_allocator() const {
             return allocator;
         }
 
-        compressed_allocator<Alloc, T> operator=(const compressed_allocator<Alloc, T>& allocator) {
+        constexpr compressed_allocator<Alloc, T> operator=(const compressed_allocator<Alloc, T>& allocator) {
             if constexpr (std::allocator_traits<Alloc>::propagate_on_container_copy_assignment::value) {
                 this->allocator = allocator;
             }
             hold_value = allocator.hold_value;
         }
 
-        compressed_allocator<Alloc, T> operator=(compressed_allocator<Alloc, T>&& allocator) {
+        constexpr compressed_allocator<Alloc, T> operator=(compressed_allocator<Alloc, T>&& allocator) {
             if constexpr (std::allocator_traits<Alloc>::propagate_on_container_move_assignment::value) {
                 this->allocator = std::move(allocator);
             }
@@ -237,12 +240,10 @@ namespace _list_array_impl {
      */
     class bit_array_helper {
         uint8_t* data;
-        size_t size;
         size_t _set_values = 0;
 
     public:
-        constexpr bit_array_helper(size_t size)
-            : size(size), data(new uint8_t[(size + 7) / 8]) {
+        constexpr bit_array_helper(size_t size) : data(new uint8_t[(size + 7) / 8]) {
             size_t compressed_size = (size + 7) / 8;
             for (size_t i = 0; i < compressed_size; i++)
                 data[i] = 0;
@@ -281,7 +282,7 @@ namespace _list_array_impl {
         void (*deleter)(T*, Allocator&);
 
     public:
-        custom_unique_ptr(T* data, Allocator& allocator, void (*deleter)(T*, Allocator&))
+        constexpr custom_unique_ptr(T* data, Allocator& allocator, void (*deleter)(T*, Allocator&))
             : data(data), allocator(allocator), deleter(deleter) {}
 
         ~custom_unique_ptr() {
@@ -290,21 +291,21 @@ namespace _list_array_impl {
             data = 0;
         }
 
-        T* get() const noexcept {
+        constexpr T* get() const noexcept {
             return data;
         }
 
-        T* release() noexcept {
+        constexpr T* release() noexcept {
             T* temp = data;
             data = nullptr;
             return temp;
         }
 
-        T* operator->() const noexcept {
+        constexpr T* operator->() const noexcept {
             return data;
         }
 
-        T& operator*() const noexcept {
+        constexpr T& operator*() const noexcept {
             return *data;
         }
     };
@@ -884,7 +885,7 @@ namespace _list_array_impl {
                 return block->data + relative_index - 1;
             }
 
-            ptrdiff_t operator-(const reverse_iterator& other) {
+            constexpr ptrdiff_t operator-(const reverse_iterator& other) {
                 return ptrdiff_t(other.absolute_index) - absolute_index;
             }
         };
@@ -1053,7 +1054,7 @@ namespace _list_array_impl {
                 return block->data + relative_index - 1;
             }
 
-            ptrdiff_t operator-(const const_reverse_iterator& other) const {
+            constexpr ptrdiff_t operator-(const const_reverse_iterator& other) const {
                 return ptrdiff_t(other.absolute_index) - absolute_index;
             }
         };
@@ -1063,7 +1064,7 @@ namespace _list_array_impl {
         using const_reference = const T&;
         using size_type = size_t;
         using difference_type = ptrdiff_t;
-        static constexpr inline size_t npos = -1;
+        static constexpr inline size_t npos = (size_t)-1;
 
         class range_provider {
             size_t _start;
@@ -2221,7 +2222,6 @@ namespace _list_array_impl {
             requires is_container<Container>::value
             : allocator_and_size(allocator) {
             reserve(cont.size());
-            size_t i = 0;
             for (auto&& it : cont)
                 push_back(T(std::move(it)));
         }
@@ -2240,7 +2240,6 @@ namespace _list_array_impl {
             requires is_container<Container>::value
             : allocator_and_size(allocator) {
             reserve(cont.size());
-            size_t i = 0;
             for (const auto& it : cont)
                 push_back(it);
         }
@@ -2380,7 +2379,7 @@ namespace _list_array_impl {
          * @param end An iterator to the end of the range.
          */
         constexpr list_array<T, Allocator>& push_back(const T* begin, const T* end) & {
-            if (_reserved_back < end - begin)
+            if (_reserved_back < size_t(end - begin))
                 reserve_back(end - begin - _reserved_back);
             for (const T* it = begin; it != end; it++)
                 push_back(*it);
@@ -2523,7 +2522,7 @@ namespace _list_array_impl {
          * @param end An iterator to the end of the range.
          */
         constexpr list_array<T, Allocator>& push_front(const T* begin, const T* end) & {
-            if (_reserved_front < end - begin)
+            if (_reserved_front < size_t(end - begin))
                 reserve_front(end - begin - _reserved_front);
             for (const T* it = begin; it != end; it++)
                 push_front(*it);
@@ -6671,7 +6670,7 @@ namespace _list_array_impl {
                         fix_size(start, middle, end);
                     get_iterator(start).template _fast_load<true, true>(L, n1);
                     get_iterator(middle).template _fast_load<true, true>(M, n2);
-                    size_t i = 0, j = 0, k = start;
+                    size_t i = 0, j = 0;
                     for (T& it : range(start, end)) {
                         if (i < n1 && j < n2)
                             it = std::move(L[i] <= M[j] ? L[i++] : M[j++]);
@@ -6680,10 +6679,10 @@ namespace _list_array_impl {
                         else if (j < n2)
                             it = std::move(M[j++]);
                     }
-                    for (size_t i = 0; i < n1; i++)
-                        L[i].~T();
-                    for (size_t i = 0; i < n2; i++)
-                        M[i].~T();
+                    for (size_t l = 0; l < n1; l++)
+                        L[l].~T();
+                    for (size_t l = 0; l < n2; l++)
+                        M[l].~T();
                 };
                 for (size_t b = 2; b < _size(); b <<= 1) {
                     for (size_t i = 0; i < _size(); i += b) {
@@ -6753,7 +6752,7 @@ namespace _list_array_impl {
                     fix_size(start, middle, end);
                 get_iterator(start).template _fast_load<true, true>(L, n1);
                 get_iterator(middle).template _fast_load<true, true>(M, n2);
-                size_t i = 0, j = 0, k = start;
+                size_t i = 0, j = 0;
                 for (T& it : range(start, end)) {
                     if (i < n1 && j < n2)
                         it = std::move(compare(L[i], M[j]) ? L[i++] : M[j++]);
@@ -6762,10 +6761,10 @@ namespace _list_array_impl {
                     else if (j < n2)
                         it = std::move(M[j++]);
                 }
-                for (size_t i = 0; i < n1; i++)
-                    L[i].~T();
-                for (size_t i = 0; i < n2; i++)
-                    M[i].~T();
+                for (size_t l = 0; l < n1; l++)
+                    L[l].~T();
+                for (size_t l = 0; l < n2; l++)
+                    M[l].~T();
             };
             for (size_t b = 2; b < _size(); b <<= 1) {
                 for (size_t i = 0; i < _size(); i += b) {
@@ -10172,12 +10171,12 @@ template <class T, class Allocator = std::allocator<T>>
 using list_array = _list_array_impl::list_array<T, Allocator>;
 
 template <class Array, class Allocator = std::allocator<typename _list_array_impl::is_container<Array>::container_type>>
-list_array<typename _list_array_impl::is_container<Array>::container_type, Allocator> to_list_array(Array&& arr) {
+[[nodiscard]] constexpr list_array<typename _list_array_impl::is_container<Array>::container_type, Allocator> to_list_array(Array&& arr) {
     return list_array<typename _list_array_impl::is_container<Array>::container_type, Allocator>(std::move(arr));
 }
 
 template <class Array, class Allocator = std::allocator<typename _list_array_impl::is_container<Array>::container_type>>
-list_array<typename _list_array_impl::is_container<Array>::container_type, Allocator> to_list_array(const Array& arr) {
+[[nodiscard]] constexpr list_array<typename _list_array_impl::is_container<Array>::container_type, Allocator> to_list_array(const Array& arr) {
     return list_array<typename _list_array_impl::is_container<Array>::container_type, Allocator>(arr);
 }
 
@@ -10333,7 +10332,7 @@ public:
 
     constexpr bit_refrence operator[](size_t pos) {
         size_t byte = pos / max_bits;
-        size_t bit = pos % max_bits;
+        T bit = pos % max_bits;
         if (byte >= arr.size())
             throw std::out_of_range("pos out of size limit");
         if (byte == 0 && bit < begin_bit)
