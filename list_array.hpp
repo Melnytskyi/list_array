@@ -9980,6 +9980,45 @@ namespace _list_array_impl {
         }
 
         /**
+         * @brief Converts the list_array into a specified `Container` type.
+         *
+         * Copies elements from the list_array into a new `Container`. 
+         * This is the const reference version.
+         *
+         * @return Container A new container of the specified type, filled with the list_array's elements.
+         */
+        template <template <class...> class Container>
+        [[nodiscard]] constexpr Container<T, Allocator> to_container() const&
+            requires is_container_v<Container<T, Allocator>>
+        {
+            Container<T, Allocator> copy_container;
+            copy_container.resize(size());
+            for_each([&copy_container](size_t i, const T& it) {
+                copy_container[i] = it;
+            });
+            return copy_container;
+        }
+
+        /**
+         * @brief Converts the list_array into a specified `Container` type (move version).
+         *
+         * Moves elements from the list_array into a new `Container`.
+         *
+         * @return Container A new container of the specified type, filled with the list_array's elements.
+         */
+        template <template <class...> class Container>
+        [[nodiscard]] constexpr Container<T, Allocator> to_container() &&
+            requires is_container_v<Container<T, Allocator>>
+        {
+            Container<T, Allocator> move_container;
+            move_container.resize(size());
+            std::move(*this).for_each([&move_container](size_t i, T&& it) {
+                move_container[i] = std::move(it);
+            });
+            return move_container;
+        }
+
+        /**
          * @brief Converts the list_array into a specified `Container` set type.
          *
          * Copies elements from the list_array into a new `Container` set. 
@@ -10011,6 +10050,45 @@ namespace _list_array_impl {
             requires is_container_v<Container>
         {
             Container move_container;
+            move_container.reserve(size());
+            std::move(*this).for_each([&move_container](T&& it) {
+                move_container.emplace(std::move(it));
+            });
+            return move_container;
+        }
+
+        /**
+         * @brief Converts the list_array into a specified `Container` set type.
+         *
+         * Copies elements from the list_array into a new `Container` set. 
+         * This is the const reference version.
+         *
+         * @return Container A new set container of the specified type, filled with the list_array's elements.
+         */
+        template <template <class...> class Container>
+        [[nodiscard]] constexpr Container<T, Allocator> to_set() const&
+            requires is_container_v<Container<T, Allocator>>
+        {
+            Container<T, Allocator> copy_container;
+            copy_container.reserve(size());
+            for_each([&copy_container](const T& it) {
+                copy_container.emplace(it);
+            });
+            return copy_container;
+        }
+
+        /**
+         * @brief Converts the list_array into a specified `Container` set type (move version).
+         *
+         * Moves elements from the list_array into a new `Container` set.
+         *
+         * @return Container A new set container of the specified type, filled with the list_array's elements.
+         */
+        template <template <class...> class Container>
+        [[nodiscard]] constexpr Container<T, Allocator> to_set() &&
+            requires is_container_v<Container<T, Allocator>>
+        {
+            Container<T, Allocator> move_container;
             move_container.reserve(size());
             std::move(*this).for_each([&move_container](T&& it) {
                 move_container.emplace(std::move(it));
