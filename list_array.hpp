@@ -10388,42 +10388,41 @@ public:
     }
 
     constexpr bit_list_array& push_back(bool val) {
-        if (end_bit == max_bits) {
+        if (end_bit == max_bits || arr.empty()) {
             arr.push_back(0);
             end_bit = 0;
-            return *this;
         }
-        arr[arr.size() - 1] |= val << end_bit++;
+        arr[arr.size() - 1] |= T(val) << end_bit++;
         return *this;
     }
 
     constexpr bit_list_array& pop_back() {
-        if (end_bit == 0) {
+        if (end_bit == 0 || arr.empty()) {
             arr.pop_back();
             end_bit = max_bits;
             return *this;
         }
         end_bit--;
-        arr[arr.size() - 1] &= ~(1 << end_bit);
+        arr[arr.size() - 1] &= ~(T(1) << end_bit);
         return *this;
     }
 
     constexpr bit_list_array& push_front(bool val) {
-        if (begin_bit == 0) {
+        if (begin_bit == 0 || arr.empty()) {
             arr.push_front(0);
             begin_bit = max_bits;
         }
-        arr[0] |= val << --begin_bit;
+        arr[0] |= T(val) << --begin_bit;
         return *this;
     }
 
     constexpr bit_list_array& pop_front() {
-        if (begin_bit == max_bits) {
+        if (begin_bit == max_bits || arr.empty()) {
             arr.pop_front();
             begin_bit = 0;
             return *this;
         }
-        arr[0] &= ~(1 << begin_bit++);
+        arr[0] &= ~(T(1) << begin_bit++);
         return *this;
     }
 
@@ -10450,9 +10449,9 @@ public:
             throw std::out_of_range("pos out of size limit");
         bool res = (arr[byte] >> bit) & 1;
         if (val)
-            arr[byte] |= 1 << bit;
+            arr[byte] |= T(1) << bit;
         else
-            arr[byte] &= ~(1 << bit);
+            arr[byte] &= ~(T(1) << bit);
         return res;
     }
 
