@@ -6146,11 +6146,11 @@ namespace _list_array_impl {
         {
             if (!_size())
                 return npos;
-            const T* min = &operator[](0);
+            const T* max = &operator[](0);
             size_t index = 0;
-            for_each([&index, &v_check](size_t i, const T& it) {
-                if (*min < it) {
-                    min = &it;
+            for_each([&index, &max](size_t i, const T& it) {
+                if (*max < it) {
+                    max = &it;
                     index = i;
                 }
             });
@@ -6163,7 +6163,7 @@ namespace _list_array_impl {
         {
             std::invoke_result_t<FN, const T&> v_check{};
             size_t index = npos;
-            for_each([&index, &v_check](size_t i, const T& it) {
+            for_each([&index, &v_check, fn](size_t i, const T& it) {
                 if (index != npos) {
                     auto v = fn(it);
                     if (v_check < v) {
@@ -6186,7 +6186,7 @@ namespace _list_array_impl {
                 return npos;
             const T* min = &operator[](0);
             size_t index = 0;
-            for_each([&index, &v_check](size_t i, const T& it) {
+            for_each([&index, &min](size_t i, const T& it) {
                 if (*min > it) {
                     min = &it;
                     index = i;
@@ -6201,7 +6201,7 @@ namespace _list_array_impl {
         {
             std::invoke_result_t<FN, const T&> v_check{};
             size_t index = npos;
-            for_each([&index, &v_check](size_t i, const T& it) {
+            for_each([&index, &v_check, fn](size_t i, const T& it) {
                 if (index != npos) {
                     auto v = fn(it);
                     if (v_check > v) {
