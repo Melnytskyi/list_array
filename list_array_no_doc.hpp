@@ -2973,16 +2973,22 @@ namespace _list_array_impl {
 #pragma endregion
 #pragma region take
 
-        [[nodiscard]] constexpr list_array<T, Allocator> take() {
+        [[nodiscard]] constexpr list_array<T, Allocator> take() & {
             return std::move(*this);
         }
 
-        [[nodiscard]] constexpr T take(size_t take_pos) {
+        [[nodiscard]] constexpr T take(size_t take_pos) & {
             if (_size() <= take_pos)
                 throw std::out_of_range("Fail take item due small array");
             T res(std::move(operator[](take_pos)));
             erase(take_pos);
             return res;
+        }
+
+        [[nodiscard]] constexpr T take(size_t take_pos) && {
+            if (_size() <= take_pos)
+                throw std::out_of_range("Fail take item due small array");
+            return std::move(operator[](take_pos));
         }
 
         [[nodiscard]] constexpr T* take_raw(size_t& size) {
@@ -6134,6 +6140,82 @@ namespace _list_array_impl {
             return *min;
         }
 
+        template <class FN>
+        [[nodiscard]] constexpr size_t max_index() const&
+            requires std::totally_ordered<T>
+        {
+            if (!_size())
+                return npos;
+            const T* min = &operator[](0);
+            size_t index = 0;
+            for_each([&index, &v_check](size_t i, const T& it) {
+                if (*min < it) {
+                    min = &it;
+                    index = i;
+                }
+            });
+            return index;
+        }
+
+        template <class FN>
+        [[nodiscard]] constexpr size_t max_index(FN&& fn) const&
+            requires std::is_arithmetic_v<std::invoke_result_t<FN, const T&>>
+        {
+            std::invoke_result_t<FN, const T&> v_check{};
+            size_t index = npos;
+            for_each([&index, &v_check](size_t i, const T& it) {
+                if (index != npos) {
+                    auto v = fn(it);
+                    if (v_check < v) {
+                        v_check = v;
+                        index = i;
+                    }
+                } else {
+                    v_check = fn(it);
+                    index = i;
+                }
+            });
+            return index;
+        }
+
+        template <class FN>
+        [[nodiscard]] constexpr size_t min_index() const&
+            requires std::totally_ordered<T>
+        {
+            if (!_size())
+                return npos;
+            const T* min = &operator[](0);
+            size_t index = 0;
+            for_each([&index, &v_check](size_t i, const T& it) {
+                if (*min > it) {
+                    min = &it;
+                    index = i;
+                }
+            });
+            return index;
+        }
+
+        template <class FN>
+        [[nodiscard]] constexpr size_t min_index(FN&& fn) const&
+            requires std::is_arithmetic_v<std::invoke_result_t<FN, const T&>>
+        {
+            std::invoke_result_t<FN, const T&> v_check{};
+            size_t index = npos;
+            for_each([&index, &v_check](size_t i, const T& it) {
+                if (index != npos) {
+                    auto v = fn(it);
+                    if (v_check > v) {
+                        v_check = v;
+                        index = i;
+                    }
+                } else {
+                    v_check = fn(it);
+                    index = i;
+                }
+            });
+            return index;
+        }
+
         [[nodiscard]] constexpr T max_default() const
             requires std::is_copy_constructible_v<T> && std::totally_ordered<T>
         {
@@ -6429,7 +6511,9 @@ public:
         : arr(alloc), begin_bit(0), end_bit(0) {}
 
     constexpr bit_list_array(size_t size, const Allocator& alloc = Allocator())
-        : arr(size / max_bits + (size % max_bits ? 1 : 0), alloc), begin_bit(0), end_bit(0) {}
+        : arr(size / max_bits + (size % max_bits ? 1 : 0), alloc), begin_bit(0), end_bit(max_bits - size % max_bits) {
+        memset(arr.data(), 0, arr.size());
+    }
 
     constexpr bit_list_array(const bit_list_array& copy, const Allocator& alloc = Allocator())
         : arr(copy.arr, alloc), begin_bit(copy.begin_bit), end_bit(copy.end_bit) {}
@@ -6546,7 +6630,10 @@ public:
     }
 
     constexpr bit_list_array& resize(size_t size) {
+        if (begin_bit)
+            commit();
         arr.resize(size / max_bits + (size % max_bits ? 1 : 0));
+        end_bit = max_bits - size % max_bits;
         return *this;
     }
 
@@ -6564,7 +6651,7 @@ public:
     }
 
     constexpr bit_list_array& commit() {
-        //if array contains unused bits, then shift all bits to the left
+
         if (begin_bit != 0) {
             bit_list_array tmp;
             size_t _size = size();
