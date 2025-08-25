@@ -1280,7 +1280,7 @@ namespace _list_array_impl {
             if (!block)
                 return iterator(nullptr, 0, absolute_index);
             if (absolute_index == _size())
-                return iterator(last_block, block->data_size, absolute_index);
+                return iterator(last_block, block->data_size - (i + 1), absolute_index);
 
             while (i >= block->data_size) {
                 i -= block->data_size;
@@ -5927,7 +5927,7 @@ namespace _list_array_impl {
                 auto prev = current->prev;
                 if (current->data_size > _reserved_back) {
                     arr_block_manager<T, Allocator> manager(allocator);
-                    auto iter = end() - (current->data_size);
+                    auto iter = end() - (current->data_size) + 1;
                     manager.add_block(manager.allocate_and_take_from(current->data_size - _reserved_back, iter));
                     prev = current->prev;
                     current->prev = nullptr;
