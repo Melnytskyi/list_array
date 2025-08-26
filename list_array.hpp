@@ -203,18 +203,20 @@ namespace _list_array_impl {
             return allocator;
         }
 
-        constexpr compressed_allocator<Alloc, T> operator=(const compressed_allocator<Alloc, T>& allocator) {
+        constexpr compressed_allocator<Alloc, T>& operator=(const compressed_allocator<Alloc, T>& allocator) {
             if constexpr (std::allocator_traits<Alloc>::propagate_on_container_copy_assignment::value) {
                 this->allocator = allocator;
             }
             hold_value = allocator.hold_value;
+            return *this;
         }
 
-        constexpr compressed_allocator<Alloc, T> operator=(compressed_allocator<Alloc, T>&& allocator) {
+        constexpr compressed_allocator<Alloc, T>& operator=(compressed_allocator<Alloc, T>&& allocator) {
             if constexpr (std::allocator_traits<Alloc>::propagate_on_container_move_assignment::value) {
                 this->allocator = std::move(allocator);
             }
             hold_value = std::move(allocator.hold_value);
+            return *this;
         }
     };
 
@@ -2002,10 +2004,10 @@ namespace _list_array_impl {
                 remove_in_block(std::forward<FN>(fn), begin, end);
             } else {
                 const_iterator block_iter = end;
-                remove_in_block(std::forward<FN>(fn), const_iterator(end.block, 0, end.absolute_index), block_iter);
+                remove_in_block(fn, const_iterator(end.block, 0, end.absolute_index), block_iter);
                 block_iter = const_iterator(end.block->prev, 0, end.absolute_index - end.block->data_size);
                 while (block_iter.block != begin.block) {
-                    remove_in_block(std::forward<FN>(fn), const_iterator(block_iter.block, 0, block_iter.absolute_index - block_iter.block->data_size), block_iter);
+                    remove_in_block(fn, const_iterator(block_iter.block, 0, block_iter.absolute_index - block_iter.block->data_size), block_iter);
                     block_iter = const_iterator(block_iter.block->prev, 0, block_iter.absolute_index - block_iter.block->data_size);
                 }
                 remove_in_block(std::forward<FN>(fn), begin, const_iterator(begin.block, begin.block->data_size, begin.absolute_index + begin.block->data_size - begin.relative_index));
@@ -4371,16 +4373,20 @@ namespace _list_array_impl {
             for (auto& it : range(start_pos, end_pos)) {
                 if constexpr (std::is_invocable_r_v<bool, FN, size_t, T>) {
                     if (select_fn(i, it)) {
-                        if (first)
+                        if (first) {
                             first_selection = i;
+                            first = false;
+                        }
                         selector.set(i, true);
                         res.push_back(std::move(it));
                         last_selection = i;
                     }
                 } else {
                     if (select_fn(it)) {
-                        if (first)
+                        if (first) {
                             first_selection = i;
+                            first = false;
+                        }
                         selector.set(i, true);
                         res.push_back(std::move(it));
                         last_selection = i;
@@ -6679,73 +6685,8 @@ namespace _list_array_impl {
                     }
                 }
                 swap(result);
-            } else {
-                size_t curr_L_size = _size() / 2 + 1;
-                size_t curr_M_size = _size() / 2 + 1;
-                T* L = allocator_and_size.allocate(_size() / 2 + 1);
-                T* M = allocator_and_size.allocate(_size() / 2 + 1);
-                auto fix_size = [&](size_t start, size_t middle, size_t end) {
-                    size_t l = middle - start + 1;
-                    size_t m = end - middle + 1;
-                    if (curr_L_size < l) {
-                        allocator_and_size.deallocate(L, curr_L_size);
-                        L = allocator_and_size.allocate(l);
-                        curr_L_size = l;
-                    }
-                    if (curr_M_size < m) {
-                        allocator_and_size.deallocate(M, curr_M_size);
-                        M = allocator_and_size.allocate(m);
-                        curr_M_size = m;
-                    }
-                };
-                auto merge = [&](size_t start, size_t middle, size_t end) {
-                    size_t n1 = middle - start;
-                    size_t n2 = end - middle;
-                    if (curr_L_size < n1 || curr_M_size < n2)
-                        fix_size(start, middle, end);
-                    get_iterator(start).template _fast_load<true, true>(L, n1);
-                    get_iterator(middle).template _fast_load<true, true>(M, n2);
-                    size_t i = 0, j = 0;
-                    for (T& it : range(start, end)) {
-                        if (i < n1 && j < n2)
-                            it = std::move(L[i] <= M[j] ? L[i++] : M[j++]);
-                        else if (i < n1)
-                            it = std::move(L[i++]);
-                        else if (j < n2)
-                            it = std::move(M[j++]);
-                    }
-                    for (size_t l = 0; l < n1; l++)
-                        L[l].~T();
-                    for (size_t l = 0; l < n2; l++)
-                        M[l].~T();
-                };
-                for (size_t b = 2; b < _size(); b <<= 1) {
-                    for (size_t i = 0; i < _size(); i += b) {
-                        if (i + b > _size())
-                            merge(i, i + ((_size() - i) >> 1), _size());
-                        else
-                            merge(i, i + (b >> 1), i + b);
-                    }
-                    if (b << 1 > _size())
-                        merge(0, b, _size());
-                }
-                auto non_sorted_finder = [&](size_t continue_search) {
-                    const auto* check = &operator[](0);
-                    size_t res = continue_search;
-                    for (const T& it : *this) {
-                        if (*check > it)
-                            return res;
-                        check = &it;
-                        ++res;
-                    }
-                    return size_t(0);
-                };
-                size_t err = 0;
-                while ((err = non_sorted_finder(err)))
-                    merge(0, err, _size());
-                allocator_and_size.deallocate(L, curr_L_size);
-                allocator_and_size.deallocate(M, curr_M_size);
-            }
+            } else
+                sort([](auto& first, auto& second) { return first < second; });
             return *this;
         }
 
@@ -6812,7 +6753,7 @@ namespace _list_array_impl {
                     merge(0, b, _size());
             }
             auto non_sorted_finder = [&](size_t continue_search) {
-                const auto* check = &operator[](0);
+                const auto* check = &operator[](continue_search);
                 size_t res = continue_search;
                 for (const T& it : *this) {
                     if (!compare(*check, it))
@@ -9576,7 +9517,6 @@ namespace _list_array_impl {
                     arr_block_manager<T, Allocator> manager(allocator);
                     auto iter = begin();
                     manager.add_block(manager.allocate_and_take_from(current->data_size - _reserved_front, iter));
-                    next = current->next;
                     current->next = nullptr;
                     arr_block<T>::destroy_block(current, allocator);
                     first_block = manager.get_first();
@@ -9612,7 +9552,6 @@ namespace _list_array_impl {
                     arr_block_manager<T, Allocator> manager(allocator);
                     auto iter = end() - (current->data_size) + 1;
                     manager.add_block(manager.allocate_and_take_from(current->data_size - _reserved_back, iter));
-                    prev = current->prev;
                     current->prev = nullptr;
                     arr_block<T>::destroy_block(current, allocator);
                     last_block = manager.get_last();
@@ -10602,6 +10541,7 @@ public:
 
     constexpr bit_list_array& reserve_front(size_t size) {
         arr.reserve_front(size / max_bits + (size % max_bits ? 1 : 0));
+        return *this;
     }
 
     constexpr bool need_commit() const {
@@ -10759,4 +10699,4 @@ namespace std {
     };
 }
 
-#endif
+#endif /* LIBRARY_LIST_ARRAY_LIST_ARRAY */

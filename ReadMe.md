@@ -166,5 +166,3 @@ This repository includes a `list_array.natvis` file. It provides a clean, human-
 ## Acknowledgements
 
 [PVS-Studio](https://pvs-studio.com/pvs-studio/?utm_source=website&utm_medium=github&utm_campaign=open_source) - static analyzer for C, C++, C#, and Java code.
-
-[![PVS-Studio](https://cdn.pvs-studio.com/static/favicon.ico)](https://pvs-studio.com/pvs-studio/?utm_source=website&utm_medium=github&utm_campaign=open_source)
