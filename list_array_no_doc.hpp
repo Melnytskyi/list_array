@@ -2,6 +2,7 @@
 #define LIST_ARRAY
 #include <algorithm>
 #include <concepts>
+#include <cstring>
 #include <functional>
 #include <iterator>
 #include <memory>
@@ -6451,7 +6452,7 @@ public:
 
     constexpr bit_list_array(size_t size, const Allocator& alloc = Allocator())
         : arr(size / max_bits + (size % max_bits ? 1 : 0), alloc), begin_bit(0), end_bit(max_bits - size % max_bits) {
-        memset(arr.data(), 0, arr.size());
+        std::memset(arr.data(), 0, arr.size());
     }
 
     constexpr bit_list_array(const bit_list_array& copy, const Allocator& alloc = Allocator())
