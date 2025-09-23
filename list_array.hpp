@@ -2425,7 +2425,7 @@ namespace _list_array_impl {
          * @param args The arguments to be forwarded to the constructor of T.
          */
         template <class... Args>
-        constexpr decltype(auto) emplace_back(Args&&... args) & {
+        constexpr auto& emplace_back(Args&&... args) & {
             if (_reserved_back) {
                 auto it = std::construct_at(get_direct_element_at_index(_reserved_front + _size()), std::forward<Args>(args)...);
                 ++_size();
@@ -2570,7 +2570,7 @@ namespace _list_array_impl {
          * @param args The arguments to be forwarded to the constructor of T.
          */
         template <class... Args>
-        constexpr decltype(auto) emplace_front(Args&&... args) & {
+        constexpr auto& emplace_front(Args&&... args) & {
             if (_reserved_front) {
                 auto it = std::construct_at(get_direct_element_at_index(_reserved_front - 1), std::forward<Args>(args)...);
                 ++_size();
