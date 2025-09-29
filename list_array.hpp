@@ -405,10 +405,10 @@ namespace _list_array_impl {
             auto block = arr_block<T>::create_safe_block(allocator, block_size);
             size_t constructed_at = 0;
             try {
-                for (size_t i = 0; i < block_size; ++i, ++iter, ++constructed_at)
+                for (size_t i = 0; i < block_size; i++, ++iter, ++constructed_at)
                     std::construct_at(block->data + i, std::move(*iter));
             } catch (...) {
-                for (size_t j = 0; j < constructed_at; ++j)
+                for (size_t j = 0; j < constructed_at; j++)
                     std::destroy_at(block->data + j);
                 throw;
             }
@@ -419,7 +419,7 @@ namespace _list_array_impl {
             while (first) {
                 auto temp = first;
                 first = first->next;
-                for (size_t k = 0; k < temp->data_size; ++k) {
+                for (size_t k = 0; k < temp->data_size; k++) {
                     std::destroy_at(temp->data + k);
                 }
                 arr_block<T>::destroy_block(temp, allocator);
@@ -1337,7 +1337,7 @@ namespace _list_array_impl {
          */
         constexpr T* get_element_at_index(size_t index) const noexcept {
             index += _reserved_front;
-            return index < capacity() / 2
+            return index < (capacity() >> 1)
                        ? get_element_at_index_front(index)
                        : get_element_at_index_back(capacity() - index - 1);
         }
@@ -1348,7 +1348,7 @@ namespace _list_array_impl {
          * @return The element at the specified index.
          */
         constexpr T* get_direct_element_at_index(size_t index) const noexcept {
-            return index < capacity() / 2
+            return index < (capacity() >> 1)
                        ? get_element_at_index_front(index)
                        : get_element_at_index_back(capacity() - index - 1);
         }
@@ -1400,7 +1400,7 @@ namespace _list_array_impl {
          * @return An iterator pointing to the element at the specified index.
          */
         constexpr iterator get_iterator_at_index(size_t index) noexcept {
-            return index < capacity() / 2
+            return index < (capacity() >> 1)
                        ? get_iterator_at_index_front(index + _reserved_front)
                        : get_iterator_at_index_back(capacity() - (index + _reserved_front) - 1, index + _reserved_front);
         }
@@ -1468,9 +1468,9 @@ namespace _list_array_impl {
             if (c < 1024)
                 return c;
             else if (c < 2048) {
-                return c / 2;
+                return c >> 1;
             } else
-                return c / 4;
+                return c >> 2;
         }
 
         /** 
@@ -6704,10 +6704,10 @@ namespace _list_array_impl {
         constexpr list_array<T, Allocator>& sort(FN&& compare) & {
             if (empty())
                 return *this;
-            size_t curr_L_size = _size() / 2 + 1;
-            size_t curr_M_size = _size() / 2 + 1;
-            T* L = allocator_and_size.allocate(_size() / 2 + 1);
-            T* M = allocator_and_size.allocate(_size() / 2 + 1);
+            size_t curr_L_size = (_size() >> 1) + 1;
+            size_t curr_M_size = (_size() >> 1) + 1;
+            T* L = allocator_and_size.allocate((_size() >> 1) + 1);
+            T* M = allocator_and_size.allocate((_size() >> 1) + 1);
             auto fix_size = [&L, &M, &curr_L_size, &curr_M_size, this](size_t start, size_t middle, size_t end) {
                 size_t l = middle - start + 1;
                 size_t m = end - middle + 1;
@@ -9551,7 +9551,7 @@ namespace _list_array_impl {
                 auto prev = current->prev;
                 if (current->data_size > _reserved_back) {
                     arr_block_manager<T, Allocator> manager(allocator);
-                    auto iter = end() - (current->data_size) + 1;
+                    auto iter = iterator(current, 0, _size() - current->data_size);
                     manager.add_block(manager.allocate_and_take_from(current->data_size - _reserved_back, iter));
                     current->prev = nullptr;
                     arr_block<T>::destroy_block(current, allocator);
@@ -10404,6 +10404,81 @@ struct bit_list_array {
         }
     };
 
+    constexpr bit_list_array& internal_push_back_bits(T value, size_t num_bits) {
+        if (num_bits == 0)
+            return *this;
+
+        if (arr.empty() || end_bit == max_bits) {
+            arr.push_back(0);
+            end_bit = 0;
+        }
+
+        size_t bits_to_write = max_bits - end_bit;
+        if (num_bits <= bits_to_write) {
+            arr.back() |= (value & ((T(1) << num_bits) - 1)) << end_bit;
+            end_bit += num_bits;
+        } else {
+            arr.back() |= (value & ((T(1) << bits_to_write) - 1)) << end_bit;
+            value >>= bits_to_write;
+            num_bits -= bits_to_write;
+            end_bit = max_bits;
+            internal_push_back_bits(value, num_bits);
+        }
+        return *this;
+    }
+
+    constexpr bit_list_array& internal_push_front_bits(T value, size_t num_bits) {
+        if (num_bits == 0)
+            return *this;
+
+        if (arr.empty() || begin_bit == 0) {
+            arr.push_front(0);
+            begin_bit = max_bits;
+        }
+
+        size_t bits_to_write = begin_bit;
+        if (num_bits <= bits_to_write) {
+            begin_bit -= num_bits;
+            arr.front() |= (value & ((T(1) << num_bits) - 1)) << begin_bit;
+        } else {
+            arr.front() |= (value & ((T(1) << bits_to_write) - 1));
+            value >>= bits_to_write;
+            num_bits -= bits_to_write;
+            arr.push_front(value);
+            begin_bit = max_bits - num_bits;
+        }
+        return *this;
+    }
+
+    constexpr T internal_get_bits(size_t pos, size_t num_bits) const {
+        if (num_bits == 0)
+            return 0;
+        size_t byte_index = (pos + begin_bit) / max_bits;
+        size_t bit_index = (pos + begin_bit) % max_bits;
+
+        T value = (arr[byte_index] >> bit_index) & ((T(1) << (max_bits - bit_index)) - 1);
+        if (bit_index + num_bits > max_bits) {
+            value |= arr[byte_index + 1] << (max_bits - bit_index);
+        }
+        return value & ((T(1) << num_bits) - 1);
+    }
+
+    constexpr void internal_set_bits(size_t pos, T value, size_t num_bits) {
+        if (num_bits == 0)
+            return;
+        size_t byte_index = (pos + begin_bit) / max_bits;
+        size_t bit_index = (pos + begin_bit) % max_bits;
+
+        T mask = ((T(1) << num_bits) - 1);
+        arr[byte_index] = (arr[byte_index] & ~(mask << bit_index)) | ((value & mask) << bit_index);
+
+        if (bit_index + num_bits > max_bits) {
+            size_t remaining_bits = bit_index + num_bits - max_bits;
+            T remaining_mask = (T(1) << remaining_bits) - 1;
+            arr[byte_index + 1] = (arr[byte_index + 1] & ~remaining_mask) | (value >> (num_bits - remaining_bits));
+        }
+    }
+
 public:
     constexpr bit_list_array(const Allocator& alloc = Allocator())
         : arr(alloc), begin_bit(0), end_bit(0) {}
@@ -10449,6 +10524,23 @@ public:
         return *this;
     }
 
+    /**
+     * @brief Pushes a specified number of bits from a value of any integral type to the end of the array.
+     *
+     * @tparam U The type of the value to push.
+     * @param value The value containing the bits to push.
+     * @param num_bits The number of bits to push from the value.
+     * @return A reference to the modified bit_list_array.
+     */
+    template <std::integral U>
+    constexpr bit_list_array& push_back_bits(U value, uint8_t num_bits) {
+        for (uint8_t i = 0; i < num_bits; i += max_bits) {
+            uint8_t bits_to_push = std::min<uint8_t>(num_bits - i, max_bits);
+            internal_push_back_bits(static_cast<T>(value >> i), bits_to_push);
+        }
+        return *this;
+    }
+
     constexpr bit_list_array& pop_back() {
         if (end_bit == 0 || arr.empty()) {
             arr.pop_back();
@@ -10466,6 +10558,23 @@ public:
             begin_bit = max_bits;
         }
         arr[0] |= T(val) << --begin_bit;
+        return *this;
+    }
+
+    /**
+     * @brief Pushes a specified number of bits from a value of any integral type to the front of the array.
+     *
+     * @tparam U The type of the value to push.
+     * @param value The value containing the bits to push.
+     * @param num_bits The number of bits to push from the value.
+     * @return A reference to the modified bit_list_array.
+     */
+    template <std::integral U>
+    constexpr bit_list_array& push_front_bits(U value, uint8_t num_bits) {
+        for (int i = num_bits - max_bits; i >= 0; i -= max_bits) {
+            uint8_t bits_to_push = std::min<uint8_t>(num_bits - i, max_bits);
+            internal_push_front_bits(static_cast<T>(value >> i), bits_to_push);
+        }
         return *this;
     }
 
@@ -10506,6 +10615,40 @@ public:
         else
             arr[byte] &= ~(T(1) << bit);
         return res;
+    }
+
+    /**
+     * @brief Gets a specified number of bits from a given position and returns them in a value of any integral type.
+     *
+     * @tparam U The type of the value to return.
+     * @param pos The starting bit position.
+     * @param num_bits The number of bits to retrieve.
+     * @return The value containing the retrieved bits.
+     */
+    template <std::integral U = T>
+    constexpr U get_bits(size_t pos, uint8_t num_bits) const {
+        U result = 0;
+        for (uint8_t i = 0; i < num_bits; i += max_bits) {
+            uint8_t bits_to_get = std::min<uint8_t>(num_bits - i, max_bits);
+            result |= static_cast<U>(internal_get_bits(pos + i, bits_to_get)) << i;
+        }
+        return result;
+    }
+
+    /**
+     * @brief Sets a specified number of bits at a given position from a value of any integral type.
+     *
+     * @tparam U The type of the value to set.
+     * @param pos The starting bit position.
+     * @param value The value containing the bits to set.
+     * @param num_bits The number of bits to set from the value.
+     */
+    template <std::integral U>
+    constexpr void set_bits(size_t pos, U value, uint8_t num_bits) {
+        for (uint8_t i = 0; i < num_bits; i += max_bits) {
+            uint8_t bits_to_set = std::min<uint8_t>(num_bits - i, max_bits);
+            internal_set_bits(pos + i, static_cast<T>(value >> i), bits_to_set);
+        }
     }
 
     constexpr bit_refrence operator[](size_t pos) {
