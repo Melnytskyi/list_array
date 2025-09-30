@@ -10679,7 +10679,7 @@ public:
     constexpr bit_list_array& resize(size_t size) {
         if (begin_bit)
             commit();
-        arr.resize(size / max_bits + (size % max_bits ? 1 : 0));
+        arr.resize(size / max_bits + (size % max_bits ? 1 : 0), 0);
         end_bit = max_bits - size % max_bits;
         return *this;
     }
