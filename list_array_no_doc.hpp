@@ -6626,6 +6626,12 @@ public:
         return (arr[byte] >> bit) & 1;
     }
 
+    constexpr bool get_unchecked(size_t pos) const {
+        size_t byte = pos / max_bits;
+        size_t bit = pos % max_bits;
+        return (arr[byte] >> bit) & 1;
+    }
+
     constexpr bool set(size_t pos, bool val) {
         size_t byte = pos / max_bits;
         size_t bit = pos % max_bits;
