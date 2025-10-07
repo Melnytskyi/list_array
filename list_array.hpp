@@ -10680,7 +10680,7 @@ public:
         if (begin_bit)
             commit();
         arr.resize(size / max_bits + (size % max_bits ? 1 : 0), 0);
-        end_bit = max_bits - size % max_bits;
+        end_bit = size % max_bits;
         return *this;
     }
 
