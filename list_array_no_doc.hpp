@@ -6525,9 +6525,9 @@ public:
     constexpr bit_list_array(const Allocator& alloc = Allocator())
         : arr(alloc), begin_bit(0), end_bit(0) {}
 
-    constexpr bit_list_array(size_t size, const Allocator& alloc = Allocator())
+    constexpr bit_list_array(size_t size, bool default_value = false, const Allocator& alloc = Allocator())
         : arr(size / max_bits + (size % max_bits ? 1 : 0), alloc), begin_bit(0), end_bit(max_bits - size % max_bits) {
-        std::memset(arr.data(), 0, arr.size());
+        std::memset(arr.data(), default_value ? UINT32_MAX : 0, arr.size());
     }
 
     constexpr bit_list_array(const bit_list_array& copy, const Allocator& alloc = Allocator())
@@ -6737,10 +6737,17 @@ public:
     }
 
     constexpr bit_list_array& flip() {
-        for (size_t i = 0; i < arr.size(); i++)
-            arr[i] = ~arr[i];
+        for (auto& it : arr)
+            it = ~it;
         return *this;
     }
+
+    constexpr bit_list_array& zero_all() {
+        for (auto& it : arr[i])
+            it = 0;
+        return *this;
+    }
+
 
     constexpr bit_list_array operator~() const {
         return bit_list_array(*this).flip();
