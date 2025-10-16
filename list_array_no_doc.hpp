@@ -6743,7 +6743,7 @@ public:
     }
 
     constexpr bit_list_array& zero_all() {
-        for (auto& it : arr[i])
+        for (auto& it : arr)
             it = 0;
         return *this;
     }
