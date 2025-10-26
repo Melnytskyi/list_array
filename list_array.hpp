@@ -2,13 +2,14 @@
 #define LIST_ARRAY
 #include <algorithm>
 #include <concepts>
+#include <cstring>
 #include <functional>
 #include <iterator>
 #include <memory>
 #include <stdexcept>
 #include <stdint.h>
+#include <string.h>
 #include <type_traits>
-#include <cstring>
 #include <utility>
 
 /**
@@ -94,11 +95,10 @@ namespace _list_array_impl {
 
     template <class T>
     concept is_equality_comparable = requires(const T& it) { it == it; } || requires(const T it) { it == it; };
-    
+
 
     template <class T0, class T1>
     concept is_equality_comparable_with = requires(const T0& it0, const T0& it1) { it0 == it1; };
-
 
     /**
      * @struct compressed_allocator
@@ -2122,7 +2122,7 @@ namespace _list_array_impl {
          * @param size The number of elements to create in the array.
          * @param allocator The allocator object to use for memory management (defaults to the default allocator for type `T`).
          */
-         constexpr list_array(size_t size, const Allocator& allocator = Allocator())
+        constexpr list_array(size_t size, const Allocator& allocator = Allocator())
             requires std::default_initializable<T>
             : allocator_and_size(allocator) {
             resize(size);
@@ -2351,8 +2351,39 @@ namespace _list_array_impl {
         constexpr list_array<T, Allocator>& push_back(const list_array<T, AnyAllocator>& alloc) & {
             if (_reserved_back < alloc.size())
                 reserve_back(alloc.size() - _reserved_back);
-            for (const auto& value : alloc)
-                push_back(value);
+            if constexpr (std::is_trivially_copy_constructible_v<T>) {
+                size_t siz = alloc.size();
+                resize(_size() + siz);
+
+                iterator it = get_iterator(_size() - siz);
+                const_iterator other_it = alloc.begin();
+
+                size_t offset = it.relative_index;
+                arr_block<T>* curr_block = it.block;
+
+                size_t other_offset = other_it.relative_index;
+                arr_block<T>* other_curr_block = other_it.block;
+                while (siz) {
+                    size_t its_to_copy = std::min(std::min(curr_block->data_size - offset, siz), other_curr_block->data_size - other_offset);
+
+                    memcpy(curr_block->data + offset, other_curr_block->data, its_to_copy * sizeof(T));
+
+                    siz -= its_to_copy;
+                    offset += its_to_copy;
+                    other_offset += its_to_copy;
+
+                    if (other_offset >= other_curr_block->data_size) {
+                        other_curr_block = other_curr_block->next;
+                        other_offset = 0;
+                    }
+                    if (offset >= curr_block->data_size) {
+                        curr_block = curr_block->next;
+                        offset = 0;
+                    }
+                }
+            } else
+                for (const auto& value : alloc)
+                    push_back(value);
             return *this;
         }
 
@@ -2366,8 +2397,43 @@ namespace _list_array_impl {
         constexpr list_array<T, Allocator>& push_back(list_array<T, AnyAllocator>&& alloc) & {
             if (_reserved_back < alloc.size())
                 reserve_back(alloc.size() - _reserved_back);
-            for (auto& value : alloc)
-                push_back(std::move(value));
+            if constexpr (std::is_trivially_move_constructible_v<T>) {
+                size_t siz = alloc.size();
+                resize(_size() + siz);
+
+                iterator it = get_iterator(_size() - siz);
+                iterator other_it = alloc.begin();
+
+                size_t offset = it.relative_index;
+                arr_block<T>* curr_block = it.block;
+
+                size_t other_offset = other_it.relative_index;
+                arr_block<T>* other_curr_block = other_it.block;
+
+                while (siz) {
+                    size_t its_to_copy = std::min(std::min(curr_block->data_size - offset, siz), other_curr_block->data_size - other_offset);
+
+                    memcpy(curr_block->data + offset, other_curr_block->data, its_to_copy * sizeof(T));
+
+                    if constexpr (!std::is_trivially_copy_constructible_v<T>)
+                        memset(other_curr_block->data, its_to_copy * sizeof(T), 0);
+
+                    siz -= its_to_copy;
+                    offset += its_to_copy;
+                    other_offset += its_to_copy;
+
+                    if (other_offset >= other_curr_block->data_size) {
+                        other_curr_block = other_curr_block->next;
+                        other_offset = 0;
+                    }
+                    if (offset >= curr_block->data_size) {
+                        curr_block = curr_block->next;
+                        offset = 0;
+                    }
+                }
+            } else
+                for (auto& value : alloc)
+                    push_back(std::move(value));
             return *this;
         }
 
@@ -2380,8 +2446,30 @@ namespace _list_array_impl {
         constexpr list_array<T, Allocator>& push_back(const T* begin, const T* end) & {
             if (_reserved_back < size_t(end - begin))
                 reserve_back(end - begin - _reserved_back);
-            for (const T* it = begin; it != end; it++)
-                push_back(*it);
+            if constexpr (std::is_trivially_copy_constructible_v<T>) {
+                size_t siz = size_t(end - begin);
+                resize(_size() + siz);
+
+                iterator it = get_iterator(_size() - siz);
+
+                size_t offset = it.relative_index;
+                arr_block<T>* curr_block = it.block;
+                while (siz) {
+                    size_t its_to_copy = std::min(curr_block->data_size - offset, siz);
+                    memcpy(curr_block->data + offset, begin, its_to_copy * sizeof(T));
+
+                    siz -= its_to_copy;
+                    begin += its_to_copy;
+                    offset += its_to_copy;
+
+                    if (offset >= curr_block->data_size) {
+                        curr_block = curr_block->next;
+                        offset = 0;
+                    }
+                }
+            } else
+                for (const T* it = begin; it != end; it++)
+                    push_back(*it);
             return *this;
         }
 
@@ -2495,8 +2583,40 @@ namespace _list_array_impl {
         constexpr list_array<T, Allocator>& push_front(const list_array<T, AnyAllocator>& alloc) & {
             if (_reserved_front < alloc.size())
                 reserve_front(alloc.size() - _reserved_front);
-            for (const auto& value : alloc.reverse())
-                push_front(value);
+            if constexpr (std::is_trivially_copy_constructible_v<T>) {
+                size_t siz = alloc.size();
+                _size() += siz;
+                _reserved_front -= siz;
+
+                iterator it = begin();
+                const_iterator other_it = alloc.begin();
+
+                size_t offset = it.relative_index;
+                arr_block<T>* curr_block = it.block;
+
+                size_t other_offset = other_it.relative_index;
+                arr_block<T>* other_curr_block = other_it.block;
+                while (siz) {
+                    size_t its_to_copy = std::min(std::min(curr_block->data_size - offset, siz), other_curr_block->data_size - other_offset);
+
+                    memcpy(curr_block->data + offset, other_curr_block->data, its_to_copy * sizeof(T));
+
+                    siz -= its_to_copy;
+                    offset += its_to_copy;
+                    other_offset += its_to_copy;
+
+                    if (other_offset >= other_curr_block->data_size) {
+                        other_curr_block = other_curr_block->next;
+                        other_offset = 0;
+                    }
+                    if (offset >= curr_block->data_size) {
+                        curr_block = curr_block->next;
+                        offset = 0;
+                    }
+                }
+            } else
+                for (const auto& value : alloc.reverse())
+                    push_front(value);
             return *this;
         }
 
@@ -2510,8 +2630,44 @@ namespace _list_array_impl {
         constexpr list_array<T, Allocator>& push_front(list_array<T, AnyAllocator>&& alloc) & {
             if (_reserved_front < alloc.size())
                 reserve_front(alloc.size() - _reserved_front);
-            for (auto& value : alloc.reverse())
-                push_front(std::move(value));
+            if constexpr (std::is_trivially_move_constructible_v<T>) {
+                size_t siz = alloc.size();
+                _size() += siz;
+                _reserved_front -= siz;
+
+                iterator it = begin();
+                iterator other_it = alloc.begin();
+
+                size_t offset = it.relative_index;
+                arr_block<T>* curr_block = it.block;
+
+                size_t other_offset = other_it.relative_index;
+                arr_block<T>* other_curr_block = other_it.block;
+
+                while (siz) {
+                    size_t its_to_copy = std::min(std::min(curr_block->data_size - offset, siz), other_curr_block->data_size - other_offset);
+
+                    memcpy(curr_block->data + offset, other_curr_block->data, its_to_copy * sizeof(T));
+
+                    if constexpr (!std::is_trivially_copy_constructible_v<T>)
+                        memset(other_curr_block->data, its_to_copy * sizeof(T), 0);
+
+                    siz -= its_to_copy;
+                    offset += its_to_copy;
+                    other_offset += its_to_copy;
+
+                    if (other_offset >= other_curr_block->data_size) {
+                        other_curr_block = other_curr_block->next;
+                        other_offset = 0;
+                    }
+                    if (offset >= curr_block->data_size) {
+                        curr_block = curr_block->next;
+                        offset = 0;
+                    }
+                }
+            } else
+                for (auto& value : alloc.reverse())
+                    push_front(std::move(value));
             alloc.clear();
             return *this;
         }
@@ -2525,8 +2681,31 @@ namespace _list_array_impl {
         constexpr list_array<T, Allocator>& push_front(const T* begin, const T* end) & {
             if (_reserved_front < size_t(end - begin))
                 reserve_front(end - begin - _reserved_front);
-            for (const T* it = begin; it != end; it++)
-                push_front(*it);
+            if constexpr (std::is_trivially_copy_constructible_v<T>) {
+                size_t siz = size_t(end - begin);
+                _size() += siz;
+                _reserved_front -= siz;
+
+                iterator it = this->begin();
+
+                size_t offset = it.relative_index;
+                arr_block<T>* curr_block = it.block;
+                while (siz) {
+                    size_t its_to_copy = std::min(curr_block->data_size - offset, siz);
+                    memcpy(curr_block->data + offset, begin, its_to_copy * sizeof(T));
+
+                    siz -= its_to_copy;
+                    begin += its_to_copy;
+                    offset += its_to_copy;
+
+                    if (offset >= curr_block->data_size) {
+                        curr_block = curr_block->next;
+                        offset = 0;
+                    }
+                }
+            } else
+                for (const T* it = begin; it != end; it++)
+                    push_front(*it);
             return *this;
         }
 
@@ -9049,7 +9228,6 @@ namespace _list_array_impl {
             return operator==(other) ? std::strong_ordering::equal : std::strong_ordering::less;
         }
 
-
         /**
          * @brief Compares elements in array using `FN` function and returns true if every element in array is equal
          *
@@ -10855,4 +11033,4 @@ namespace std {
     };
 }
 
-#endif /* LIBRARY_LIST_ARRAY_LIST_ARRAY */
+#endif /* LIST_ARRAY */
