@@ -1998,13 +1998,13 @@ namespace _list_array_impl {
 
         template <class AnyAllocator>
         constexpr list_array<T, Allocator>& push_back(const list_array<T, AnyAllocator>& alloc) & {
-            if (_reserved_back < alloc.size())
-                reserve_back(alloc.size() - _reserved_back);
+            size_t original_siz = alloc.size();
+            if (_reserved_back < original_siz)
+                reserve_back(original_siz - _reserved_back);
             if constexpr (std::is_trivially_copy_constructible_v<T>) {
-                size_t siz = alloc.size();
-                resize(_size() + siz);
+                size_t left_siz = original_siz;
 
-                iterator it = get_iterator(_size() - siz);
+                iterator it = get_iterator(_size());
                 const_iterator other_it = alloc.begin();
 
                 size_t offset = it.relative_index;
@@ -2012,12 +2012,12 @@ namespace _list_array_impl {
 
                 size_t other_offset = other_it.relative_index;
                 arr_block<T>* other_curr_block = other_it.block;
-                while (siz) {
-                    size_t its_to_copy = std::min(std::min(curr_block->data_size - offset, siz), other_curr_block->data_size - other_offset);
+                while (left_siz) {
+                    size_t its_to_copy = std::min(std::min(curr_block->data_size - offset, left_siz), other_curr_block->data_size - other_offset);
 
-                    memcpy(curr_block->data + offset, other_curr_block->data, its_to_copy * sizeof(T));
+                    memcpy(curr_block->data + offset, other_curr_block->data + other_offset, its_to_copy * sizeof(T));
 
-                    siz -= its_to_copy;
+                    left_siz -= its_to_copy;
                     offset += its_to_copy;
                     other_offset += its_to_copy;
 
@@ -2030,6 +2030,8 @@ namespace _list_array_impl {
                         offset = 0;
                     }
                 }
+                _size() += original_siz;
+                _reserved_back -= original_siz;
             } else
                 for (const auto& value : alloc)
                     push_back(value);
@@ -2041,61 +2043,30 @@ namespace _list_array_impl {
             if (_reserved_back < alloc.size())
                 reserve_back(alloc.size() - _reserved_back);
             if constexpr (std::is_trivially_move_constructible_v<T>) {
-                size_t siz = alloc.size();
-                resize(_size() + siz);
-
-                iterator it = get_iterator(_size() - siz);
-                iterator other_it = alloc.begin();
-
-                size_t offset = it.relative_index;
-                arr_block<T>* curr_block = it.block;
-
-                size_t other_offset = other_it.relative_index;
-                arr_block<T>* other_curr_block = other_it.block;
-
-                while (siz) {
-                    size_t its_to_copy = std::min(std::min(curr_block->data_size - offset, siz), other_curr_block->data_size - other_offset);
-
-                    memcpy(curr_block->data + offset, other_curr_block->data, its_to_copy * sizeof(T));
-
-                    if constexpr (!std::is_trivially_copy_constructible_v<T>)
-                        memset(other_curr_block->data, its_to_copy * sizeof(T), 0);
-
-                    siz -= its_to_copy;
-                    offset += its_to_copy;
-                    other_offset += its_to_copy;
-
-                    if (other_offset >= other_curr_block->data_size) {
-                        other_curr_block = other_curr_block->next;
-                        other_offset = 0;
-                    }
-                    if (offset >= curr_block->data_size) {
-                        curr_block = curr_block->next;
-                        offset = 0;
-                    }
-                }
+                push_back(alloc);
             } else
                 for (auto& value : alloc)
                     push_back(std::move(value));
+            alloc.clear();
             return *this;
         }
 
         constexpr list_array<T, Allocator>& push_back(const T* begin, const T* end) & {
-            if (_reserved_back < size_t(end - begin))
-                reserve_back(end - begin - _reserved_back);
+            size_t original_siz = size_t(end - begin);
+            if (_reserved_back < original_siz)
+                reserve_back(original_siz - _reserved_back);
             if constexpr (std::is_trivially_copy_constructible_v<T>) {
-                size_t siz = size_t(end - begin);
-                resize(_size() + siz);
+                size_t left_siz = original_siz;
 
-                iterator it = get_iterator(_size() - siz);
+                iterator it = get_iterator(_size());
 
                 size_t offset = it.relative_index;
                 arr_block<T>* curr_block = it.block;
-                while (siz) {
-                    size_t its_to_copy = std::min(curr_block->data_size - offset, siz);
+                while (left_siz) {
+                    size_t its_to_copy = std::min(curr_block->data_size - offset, left_siz);
                     memcpy(curr_block->data + offset, begin, its_to_copy * sizeof(T));
 
-                    siz -= its_to_copy;
+                    left_siz -= its_to_copy;
                     begin += its_to_copy;
                     offset += its_to_copy;
 
@@ -2104,6 +2075,8 @@ namespace _list_array_impl {
                         offset = 0;
                     }
                 }
+                _size() += original_siz;
+                _reserved_back -= original_siz;
             } else
                 for (const T* it = begin; it != end; it++)
                     push_back(*it);
@@ -2179,12 +2152,11 @@ namespace _list_array_impl {
 
         template <class AnyAllocator>
         constexpr list_array<T, Allocator>& push_front(const list_array<T, AnyAllocator>& alloc) & {
-            if (_reserved_front < alloc.size())
-                reserve_front(alloc.size() - _reserved_front);
+            size_t original_siz = alloc.size();
+            if (_reserved_front < original_siz)
+                reserve_front(original_siz - _reserved_front);
             if constexpr (std::is_trivially_copy_constructible_v<T>) {
-                size_t siz = alloc.size();
-                _size() += siz;
-                _reserved_front -= siz;
+                size_t left_siz = original_siz;
 
                 iterator it = begin();
                 const_iterator other_it = alloc.begin();
@@ -2194,12 +2166,12 @@ namespace _list_array_impl {
 
                 size_t other_offset = other_it.relative_index;
                 arr_block<T>* other_curr_block = other_it.block;
-                while (siz) {
-                    size_t its_to_copy = std::min(std::min(curr_block->data_size - offset, siz), other_curr_block->data_size - other_offset);
+                while (left_siz) {
+                    size_t its_to_copy = std::min(std::min(curr_block->data_size - offset, left_siz), other_curr_block->data_size - other_offset);
 
-                    memcpy(curr_block->data + offset, other_curr_block->data, its_to_copy * sizeof(T));
+                    memcpy(curr_block->data + offset, other_curr_block->data + other_offset, its_to_copy * sizeof(T));
 
-                    siz -= its_to_copy;
+                    left_siz -= its_to_copy;
                     offset += its_to_copy;
                     other_offset += its_to_copy;
 
@@ -2212,6 +2184,8 @@ namespace _list_array_impl {
                         offset = 0;
                     }
                 }
+                _size() += original_siz;
+                _reserved_front -= original_siz;
             } else
                 for (const auto& value : alloc.reverse())
                     push_front(value);
@@ -2222,41 +2196,8 @@ namespace _list_array_impl {
         constexpr list_array<T, Allocator>& push_front(list_array<T, AnyAllocator>&& alloc) & {
             if (_reserved_front < alloc.size())
                 reserve_front(alloc.size() - _reserved_front);
-            if constexpr (std::is_trivially_move_constructible_v<T>) {
-                size_t siz = alloc.size();
-                _size() += siz;
-                _reserved_front -= siz;
-
-                iterator it = begin();
-                iterator other_it = alloc.begin();
-
-                size_t offset = it.relative_index;
-                arr_block<T>* curr_block = it.block;
-
-                size_t other_offset = other_it.relative_index;
-                arr_block<T>* other_curr_block = other_it.block;
-
-                while (siz) {
-                    size_t its_to_copy = std::min(std::min(curr_block->data_size - offset, siz), other_curr_block->data_size - other_offset);
-
-                    memcpy(curr_block->data + offset, other_curr_block->data, its_to_copy * sizeof(T));
-
-                    if constexpr (!std::is_trivially_copy_constructible_v<T>)
-                        memset(other_curr_block->data, its_to_copy * sizeof(T), 0);
-
-                    siz -= its_to_copy;
-                    offset += its_to_copy;
-                    other_offset += its_to_copy;
-
-                    if (other_offset >= other_curr_block->data_size) {
-                        other_curr_block = other_curr_block->next;
-                        other_offset = 0;
-                    }
-                    if (offset >= curr_block->data_size) {
-                        curr_block = curr_block->next;
-                        offset = 0;
-                    }
-                }
+            if constexpr (std::is_trivially_copy_constructible_v<T>) {
+                push_front(alloc);
             } else
                 for (auto& value : alloc.reverse())
                     push_front(std::move(value));
@@ -2265,22 +2206,21 @@ namespace _list_array_impl {
         }
 
         constexpr list_array<T, Allocator>& push_front(const T* begin, const T* end) & {
-            if (_reserved_front < size_t(end - begin))
-                reserve_front(end - begin - _reserved_front);
+            size_t original_siz = size_t(end - begin);
+            if (_reserved_front < original_siz)
+                reserve_front(original_siz - _reserved_front);
             if constexpr (std::is_trivially_copy_constructible_v<T>) {
-                size_t siz = size_t(end - begin);
-                _size() += siz;
-                _reserved_front -= siz;
+                size_t left_siz = original_siz;
 
                 iterator it = this->begin();
 
                 size_t offset = it.relative_index;
                 arr_block<T>* curr_block = it.block;
-                while (siz) {
-                    size_t its_to_copy = std::min(curr_block->data_size - offset, siz);
+                while (left_siz) {
+                    size_t its_to_copy = std::min(curr_block->data_size - offset, left_siz);
                     memcpy(curr_block->data + offset, begin, its_to_copy * sizeof(T));
 
-                    siz -= its_to_copy;
+                    left_siz -= its_to_copy;
                     begin += its_to_copy;
                     offset += its_to_copy;
 
@@ -2289,6 +2229,8 @@ namespace _list_array_impl {
                         offset = 0;
                     }
                 }
+                _size() += original_siz;
+                _reserved_front -= original_siz;
             } else
                 for (const T* it = begin; it != end; it++)
                     push_front(*it);
