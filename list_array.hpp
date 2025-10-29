@@ -2354,8 +2354,10 @@ namespace _list_array_impl {
                 reserve_back(original_siz - _reserved_back);
             if constexpr (std::is_trivially_copy_constructible_v<T>) {
                 size_t left_siz = original_siz;
+                _size() += original_siz;
+                _reserved_back -= original_siz;
 
-                iterator it = get_iterator(_size());
+                iterator it = get_iterator(_size() - original_siz);
                 const_iterator other_it = alloc.begin();
 
                 size_t offset = it.relative_index;
@@ -2381,8 +2383,6 @@ namespace _list_array_impl {
                         offset = 0;
                     }
                 }
-                _size() += original_siz;
-                _reserved_back -= original_siz;
             } else
                 for (const auto& value : alloc)
                     push_back(value);
@@ -2420,8 +2420,10 @@ namespace _list_array_impl {
                 reserve_back(original_siz - _reserved_back);
             if constexpr (std::is_trivially_copy_constructible_v<T>) {
                 size_t left_siz = original_siz;
+                _size() += original_siz;
+                _reserved_back -= original_siz;
 
-                iterator it = get_iterator(_size());
+                iterator it = get_iterator(_size() - original_siz);
 
                 size_t offset = it.relative_index;
                 arr_block<T>* curr_block = it.block;
@@ -2438,8 +2440,6 @@ namespace _list_array_impl {
                         offset = 0;
                     }
                 }
-                _size() += original_siz;
-                _reserved_back -= original_siz;
             } else
                 for (const T* it = begin; it != end; it++)
                     push_back(*it);
@@ -2475,7 +2475,7 @@ namespace _list_array_impl {
         template <class AnotherT>
         constexpr list_array<T, Allocator>& push_back_for(const AnotherT& value) & {
             for (auto& it : *this)
-                it.push_back(value);
+                push_back(value);
             return *this;
         }
 
@@ -2559,6 +2559,8 @@ namespace _list_array_impl {
                 reserve_front(original_siz - _reserved_front);
             if constexpr (std::is_trivially_copy_constructible_v<T>) {
                 size_t left_siz = original_siz;
+                _size() += original_siz;
+                _reserved_front -= original_siz;
 
                 iterator it = begin();
                 const_iterator other_it = alloc.begin();
@@ -2586,8 +2588,6 @@ namespace _list_array_impl {
                         offset = 0;
                     }
                 }
-                _size() += original_siz;
-                _reserved_front -= original_siz;
             } else
                 for (const auto& value : alloc.reverse())
                     push_front(value);
@@ -2625,6 +2625,8 @@ namespace _list_array_impl {
                 reserve_front(original_siz - _reserved_front);
             if constexpr (std::is_trivially_copy_constructible_v<T>) {
                 size_t left_siz = original_siz;
+                _size() += original_siz;
+                _reserved_front -= original_siz;
 
                 iterator it = this->begin();
 
@@ -2643,8 +2645,6 @@ namespace _list_array_impl {
                         offset = 0;
                     }
                 }
-                _size() += original_siz;
-                _reserved_front -= original_siz;
             } else
                 for (const T* it = begin; it != end; it++)
                     push_front(*it);
@@ -2680,7 +2680,7 @@ namespace _list_array_impl {
         template <class AnotherT>
         constexpr list_array<T, Allocator>& push_front_for(const AnotherT& value) & {
             for (auto& it : *this)
-                it.push_front(value);
+                push_front(value);
             return *this;
         }
 
@@ -2803,7 +2803,7 @@ namespace _list_array_impl {
         template <class AnotherT>
         [[nodiscard]] constexpr list_array<T, Allocator> push_back_for(const AnotherT& value) && {
             for (auto& it : *this)
-                it.push_back(value);
+                push_back(value);
             return std::move(*this);
         }
 
@@ -2916,7 +2916,7 @@ namespace _list_array_impl {
         template <class AnotherT>
         [[nodiscard]] constexpr list_array<T, Allocator> push_front_for(const AnotherT& value) && {
             for (auto& it : *this)
-                it.push_front(value);
+                push_front(value);
             return std::move(*this);
         }
 
